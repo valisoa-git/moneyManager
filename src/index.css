@@ -1,0 +1,55 @@
+:root {
+  color-scheme: dark;
+  --bg: #0f1412;
+  --bg-elev: #171e1b;
+  --bg-soft: #1e2723;
+  --line: #2a3530;
+  --text: #e8eee9;
+  --muted: #8b9a92;
+  --accent: #9ad4b1;
+  --accent-dim: #1f3a2c;
+  --danger: #e07a6a;
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  line-height: 1.4;
+  font-weight: 400;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(1200px 500px at 10% -10%, #1c3a2c 0%, transparent 55%),
+    var(--bg);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
