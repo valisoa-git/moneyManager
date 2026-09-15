@@ -1,6 +1,28 @@
-# Gestion de dépenses
+# Caisse
 
-Suivi perso des dépenses **par mois**, 100% local (navigateur). Pas de serveur, pas de compte.
+Suivi freelance **local**: TJM, jours ouvrables, congés, heures sup, charges, budget perso, reste.
+
+## Formules
+
+- Les montants sont affichés et saisis en milliers d'Ariary: 300 = 300 000 Ar, 13000 = 13 000 000 Ar
+- Jours ouvrables = lundi–vendredi du mois
+- Jours facturés = ouvrables − congés + jours sup (journée ou demi-journée)
+- Gagné = jours facturés × TJM (demi-journée = 157 500 Ar)
+- Charges = charge fixe + dépenses variables du mois
+- Charge fixe = 3 000 000 Ar par défaut
+- Détail charge fixe: provision 300, essence 300, panampy 100, mama auri 400, mama valisoa 400, starlink 140, connexion 67 110, jirama 150, sakafo 600, hery 250, noella 250
+- Charge variable = 1 000 000 Ar par défaut, modifiable mois par mois
+- Reste / économies = salaire départ − charge fixe − dépenses variables
+- À date (mois en cours) = même calcul sur les jours déjà passés
+- L'application démarre en juillet 2026
+- Prévision annuelle = année civile avec jours ouvrables, congés, jours sup, jours travaillés, total salaire, salaire départ arrondi vers le bas, perso, charge fixe, budget variable, achats, reste variable et économie
+- Pour 2026, le tableau commence en juillet; 2027 reste dans le tableau 2027
+- Salaire départ = total salaire arrondi vers le bas au pas choisi (500 000 ou 1 000 000 Ar)
+- Perso = total salaire − salaire départ
+- Exemple en pas de 500 000 Ar: 5 600 000 Ar donne 5 500 000 Ar de départ et 100 000 Ar de perso
+- Dépenses perso = suivi séparé avec libellé + valeur, limité au montant Perso du mois
+- Économie du mois = salaire départ − charge fixe − achats du mois
+- Total économies annuel = somme des économies des 12 mois
 
 ## Lancer
 
@@ -10,14 +32,4 @@ npm install
 npm run dev
 ```
 
-Ouvre l’URL locale (souvent `http://localhost:5173`). Les données restent dans `localStorage`.
-
-Sur téléphone (même Wi‑Fi): utilise l’IP locale affichée par Vite, puis **Ajouter à l’écran d’accueil**.
-
-## Git
-
-Repo initialisé sur `main`. Pour une branche:
-
-```bash
-git checkout -b feature/nom
-```
+Données dans `localStorage`. Les anciennes dépenses `v1` sont reprises.
