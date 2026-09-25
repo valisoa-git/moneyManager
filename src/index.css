@@ -1,16 +1,17 @@
 :root,
-:root[data-theme="chocolat"] {
+:root[data-theme] {
   color-scheme: dark;
-  --bg: #1b100b;
-  --bg-elev: #2a1a12;
-  --bg-soft: #3a2619;
-  --line: #5a3a25;
-  --text: #fff4dc;
-  --muted: #c8aa78;
-  --accent: #d89b22;
-  --accent-dim: #4b3016;
-  --danger: #ef7d5d;
-  --bg-glow: #4a2a12;
+  --bg: #1d1008;
+  --bg-elev: #2b190f;
+  --bg-soft: #3b2416;
+  --line: #694322;
+  --line-strong: #8a5d25;
+  --text: #fff3d6;
+  --muted: #d6b36e;
+  --accent: #d99a18;
+  --accent-bright: #ffc14a;
+  --accent-dim: #5a3512;
+  --danger: #f07755;
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
   font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   line-height: 1.4;
@@ -20,71 +21,6 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-}
-
-:root[data-theme="foret"] {
-  --bg: #0e1812;
-  --bg-elev: #17251c;
-  --bg-soft: #203426;
-  --line: #375940;
-  --text: #eff8e9;
-  --muted: #a3bd94;
-  --accent: #d6ad45;
-  --accent-dim: #2f3c1c;
-  --danger: #ee806c;
-  --bg-glow: #244b2f;
-}
-
-:root[data-theme="ocean"] {
-  --bg: #071922;
-  --bg-elev: #102836;
-  --bg-soft: #183849;
-  --line: #2b6071;
-  --text: #eef9fb;
-  --muted: #9bc3c8;
-  --accent: #ee946d;
-  --accent-dim: #293948;
-  --danger: #ff6f74;
-  --bg-glow: #174a62;
-}
-
-:root[data-theme="prune"] {
-  --bg: #1b1020;
-  --bg-elev: #291932;
-  --bg-soft: #392447;
-  --line: #604070;
-  --text: #fff1f8;
-  --muted: #c7a6cf;
-  --accent: #e4b851;
-  --accent-dim: #442842;
-  --danger: #ff7f8d;
-  --bg-glow: #4a2355;
-}
-
-:root[data-theme="graphite"] {
-  --bg: #111315;
-  --bg-elev: #1d2023;
-  --bg-soft: #292d31;
-  --line: #484f55;
-  --text: #f2f4ef;
-  --muted: #aeb5ab;
-  --accent: #d0c947;
-  --accent-dim: #3a3a22;
-  --danger: #f06e63;
-  --bg-glow: #323936;
-}
-
-:root[data-theme="rose"] {
-  --bg: #211116;
-  --bg-elev: #321b22;
-  --bg-soft: #43262d;
-  --line: #70424a;
-  --text: #fff1ea;
-  --muted: #d3a89d;
-  --accent: #e8aa5f;
-  --accent-dim: #513029;
-  --danger: #ff756e;
-  --bg-glow: #5a2735;
 }
 
 * {
@@ -99,9 +35,7 @@ body,
 }
 
 body {
-  background:
-    radial-gradient(1200px 500px at 10% -10%, var(--bg-glow) 0%, transparent 55%),
-    var(--bg);
+  background: var(--bg);
 }
 
 button,

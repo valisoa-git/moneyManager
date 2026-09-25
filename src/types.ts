@@ -31,6 +31,15 @@ export type PersonalExpense = {
   date: string;
 };
 
+export type BucketProject = {
+  id: string;
+  title: string;
+  amount: number;
+  year: number;
+  plannedMonth?: string;
+  done: boolean;
+};
+
 export type FixedChargeItem = {
   id: string;
   label: string;
@@ -63,6 +72,7 @@ export type Settings = {
   fixedCharges: number;
   fixedChargeItems: FixedChargeItem[];
   defaultVariableChargeBudget: number;
+  defaultProjectBudget: number;
   roundingStep: 500_000 | 1_000_000;
   theme: ThemeId;
 };
@@ -75,11 +85,14 @@ export type MonthWork = {
   husbandScheduleCustom: boolean;
   variableChargeBudget: number;
   variableCharges: FixedChargeItem[];
+  projectBudget: number;
 };
 
 export type Store = {
   expenses: Expense[];
   personalExpenses: PersonalExpense[];
+  projects: BucketProject[];
+  projectSeedVersion: number;
   settings: Settings;
   staff: Staff[];
   months: Record<string, MonthWork>;
@@ -111,6 +124,7 @@ export const DEFAULT_VARIABLE_CHARGE_ITEMS: FixedChargeItem[] = [
   { id: "adidy", label: "Adidy", amount: 100_000 },
 ];
 export const DEFAULT_VARIABLE_CHARGE_BUDGET = 1_000_000;
+export const DEFAULT_PROJECT_BUDGET = 1_000_000;
 
 export const DEFAULT_SETTINGS: Settings = {
   tjm: TJM,
@@ -118,6 +132,7 @@ export const DEFAULT_SETTINGS: Settings = {
   fixedCharges: DEFAULT_FIXED_CHARGES,
   fixedChargeItems: DEFAULT_FIXED_CHARGE_ITEMS,
   defaultVariableChargeBudget: DEFAULT_VARIABLE_CHARGE_BUDGET,
+  defaultProjectBudget: DEFAULT_PROJECT_BUDGET,
   roundingStep: 500_000,
   theme: "chocolat",
 };
@@ -130,6 +145,7 @@ export const EMPTY_MONTH: MonthWork = {
   husbandScheduleCustom: false,
   variableChargeBudget: DEFAULT_VARIABLE_CHARGE_BUDGET,
   variableCharges: DEFAULT_VARIABLE_CHARGE_ITEMS,
+  projectBudget: DEFAULT_PROJECT_BUDGET,
 };
 
 export function categoryOf(id: CategoryId) {

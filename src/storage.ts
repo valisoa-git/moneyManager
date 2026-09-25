@@ -1,12 +1,14 @@
 import {
   DEFAULT_FIXED_CHARGES,
   DEFAULT_FIXED_CHARGE_ITEMS,
+  DEFAULT_PROJECT_BUDGET,
   DEFAULT_SETTINGS,
   DEFAULT_VARIABLE_CHARGE_BUDGET,
   DEFAULT_VARIABLE_CHARGE_ITEMS,
   EMPTY_MONTH,
   THEMES,
   TJM,
+  type BucketProject,
   type DayEntry,
   type DayFraction,
   type Expense,
@@ -18,14 +20,61 @@ import {
   type ThemeId,
 } from "./types";
 
-const KEY = "gestion-depenses:v4";
+const KEY = "gestion-depenses:v6";
+const LEGACY_V5 = "gestion-depenses:v5";
+const LEGACY_V4 = "gestion-depenses:v4";
 const LEGACY_V3 = "gestion-depenses:v3";
 const LEGACY_V2 = "gestion-depenses:v2";
 const LEGACY_V1 = "gestion-depenses:v1";
+export const PROJECT_SEED_VERSION = 1;
+
+const STARTER_PROJECTS: BucketProject[] = [
+  {
+    id: "starter-machine-a-laver-2026",
+    title: "Machine à laver",
+    amount: 1_300_000,
+    year: 2026,
+    plannedMonth: "2026-07",
+    done: false,
+  },
+  {
+    id: "starter-passeport-2026",
+    title: "Passeport",
+    amount: 1_300_000,
+    year: 2026,
+    plannedMonth: "2026-08",
+    done: false,
+  },
+  {
+    id: "starter-electromenager-2026",
+    title: "Électroménager",
+    amount: 1_000_000,
+    year: 2026,
+    plannedMonth: "2026-09",
+    done: false,
+  },
+  {
+    id: "starter-cadeau-noel-2026",
+    title: "Cadeau de Noël",
+    amount: 1_000_000,
+    year: 2026,
+    plannedMonth: "2026-10",
+    done: false,
+  },
+  {
+    id: "starter-table-a-manger-2026",
+    title: "Table à manger",
+    amount: 0,
+    year: 2026,
+    done: false,
+  },
+];
 
 const empty: Store = {
   expenses: [],
   personalExpenses: [],
+  projects: [],
+  projectSeedVersion: 0,
   settings: DEFAULT_SETTINGS,
   staff: [],
   months: {},
@@ -37,6 +86,40 @@ function isExpenseArray(value: unknown): value is Expense[] {
 
 function isPersonalExpenseArray(value: unknown): value is PersonalExpense[] {
   return Array.isArray(value);
+}
+
+function migrateProjects(raw: unknown): BucketProject[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => item as Partial<BucketProject>)
+    .filter((item) => item.id && item.title && typeof item.amount === "number" && item.amount >= 0)
+    .map((item) => ({
+      id: String(item.id),
+      title: String(item.title),
+      amount: item.amount ?? 0,
+      year: typeof item.year === "number" ? item.year : new Date().getFullYear(),
+      plannedMonth: typeof item.plannedMonth === "string" && item.plannedMonth ? item.plannedMonth : undefined,
+      done: item.done === true,
+    }));
+}
+
+function projectKey(project: Pick<BucketProject, "title" | "year">) {
+  return `${project.year}:${project.title.trim().toLocaleLowerCase("fr-FR")}`;
+}
+
+function mergeStarterProjects(projects: BucketProject[]) {
+  const existing = new Set(projects.map(projectKey));
+  const missing = STARTER_PROJECTS.filter((project) => !existing.has(projectKey(project)));
+  return [...projects, ...missing];
+}
+
+export function withStarterProjects(store: Store): Store {
+  if ((store.projectSeedVersion ?? 0) >= PROJECT_SEED_VERSION) return store;
+  return {
+    ...store,
+    projects: mergeStarterProjects(store.projects),
+    projectSeedVersion: PROJECT_SEED_VERSION,
+  };
 }
 
 function migrateTheme(value: unknown): ThemeId {
@@ -104,8 +187,10 @@ function migrateExtras(raw: unknown): DayEntry[] {
   }).filter((item) => item.date);
 }
 
-function migrateMonth(raw: unknown, defaultVariableChargeBudget: number): MonthWork {
-  if (!raw || typeof raw !== "object") return { ...EMPTY_MONTH, variableChargeBudget: defaultVariableChargeBudget };
+function migrateMonth(raw: unknown, defaultVariableChargeBudget: number, defaultProjectBudget: number): MonthWork {
+  if (!raw || typeof raw !== "object") {
+    return { ...EMPTY_MONTH, variableChargeBudget: defaultVariableChargeBudget, projectBudget: defaultProjectBudget };
+  }
   const month = raw as {
     leaves?: unknown;
     extras?: unknown;
@@ -116,6 +201,7 @@ function migrateMonth(raw: unknown, defaultVariableChargeBudget: number): MonthW
     husbandScheduleCustom?: unknown;
     variableChargeBudget?: unknown;
     variableCharges?: unknown;
+    projectBudget?: unknown;
   };
   return {
     leaves: migrateLeaves(month.leaves),
@@ -128,14 +214,25 @@ function migrateMonth(raw: unknown, defaultVariableChargeBudget: number): MonthW
         ? month.variableChargeBudget
         : defaultVariableChargeBudget,
     variableCharges: migrateChargeItems(month.variableCharges, DEFAULT_VARIABLE_CHARGE_ITEMS),
+    projectBudget:
+      typeof month.projectBudget === "number" && month.projectBudget >= 0 ? month.projectBudget : defaultProjectBudget,
   };
 }
 
-function addLegacyExpensesToMonths(months: Store["months"], expenses: Expense[], defaultVariableChargeBudget: number) {
+function addLegacyExpensesToMonths(
+  months: Store["months"],
+  expenses: Expense[],
+  defaultVariableChargeBudget: number,
+  defaultProjectBudget: number,
+) {
   for (const expense of expenses) {
     const key = expense.date.slice(0, 7);
     if (!key) continue;
-    const month = months[key] ?? { ...EMPTY_MONTH, variableChargeBudget: defaultVariableChargeBudget };
+    const month = months[key] ?? {
+      ...EMPTY_MONTH,
+      variableChargeBudget: defaultVariableChargeBudget,
+      projectBudget: defaultProjectBudget,
+    };
     const alreadyExists = month.variableCharges.some((item) => item.id === expense.id);
     months[key] = {
       ...month,
@@ -153,116 +250,105 @@ function addLegacyExpensesToMonths(months: Store["months"], expenses: Expense[],
   }
 }
 
+type RawStore = Partial<Store> & { months?: Record<string, unknown> };
+
+function migrateSettings(parsed: RawStore, options: { legacyV2?: boolean } = {}): Settings {
+  if (options.legacyV2) {
+    return {
+      tjm: parsed.settings?.tjm && parsed.settings.tjm > 0 ? parsed.settings.tjm : TJM,
+      husbandTjm: DEFAULT_SETTINGS.husbandTjm,
+      fixedCharges: DEFAULT_FIXED_CHARGES,
+      fixedChargeItems: DEFAULT_FIXED_CHARGE_ITEMS,
+      defaultVariableChargeBudget: DEFAULT_VARIABLE_CHARGE_BUDGET,
+      defaultProjectBudget: DEFAULT_PROJECT_BUDGET,
+      roundingStep: parsed.settings?.roundingStep === 1_000_000 ? 1_000_000 : 500_000,
+      theme: migrateTheme(parsed.settings?.theme),
+    };
+  }
+
+  return {
+    tjm: parsed.settings?.tjm && parsed.settings.tjm > 0 ? parsed.settings.tjm : TJM,
+    husbandTjm:
+      parsed.settings?.husbandTjm && parsed.settings.husbandTjm > 0
+        ? parsed.settings.husbandTjm
+        : DEFAULT_SETTINGS.husbandTjm,
+    fixedCharges:
+      typeof parsed.settings?.fixedCharges === "number" && parsed.settings.fixedCharges >= 0
+        ? parsed.settings.fixedCharges
+        : DEFAULT_SETTINGS.fixedCharges,
+    fixedChargeItems: migrateFixedChargeItems(parsed.settings?.fixedChargeItems),
+    defaultVariableChargeBudget:
+      typeof parsed.settings?.defaultVariableChargeBudget === "number" && parsed.settings.defaultVariableChargeBudget >= 0
+        ? parsed.settings.defaultVariableChargeBudget
+        : DEFAULT_VARIABLE_CHARGE_BUDGET,
+    defaultProjectBudget:
+      typeof parsed.settings?.defaultProjectBudget === "number" && parsed.settings.defaultProjectBudget >= 0
+        ? parsed.settings.defaultProjectBudget
+        : DEFAULT_PROJECT_BUDGET,
+    roundingStep: parsed.settings?.roundingStep === 1_000_000 ? 1_000_000 : 500_000,
+    theme: migrateTheme(parsed.settings?.theme),
+  };
+}
+
+function migrateStore(parsed: RawStore, options: { legacyV2?: boolean } = {}): Store {
+  const settings = migrateSettings(parsed, options);
+  const months: Store["months"] = {};
+  for (const [key, value] of Object.entries(parsed.months ?? {})) {
+    months[key] = migrateMonth(value, settings.defaultVariableChargeBudget, settings.defaultProjectBudget);
+  }
+  addLegacyExpensesToMonths(
+    months,
+    parsed.expenses ?? [],
+    settings.defaultVariableChargeBudget,
+    settings.defaultProjectBudget,
+  );
+
+  return withStarterProjects({
+    expenses: [],
+    personalExpenses: isPersonalExpenseArray(parsed.personalExpenses) ? parsed.personalExpenses : [],
+    projects: migrateProjects(parsed.projects),
+    projectSeedVersion: typeof parsed.projectSeedVersion === "number" ? parsed.projectSeedVersion : 0,
+    settings,
+    staff: parsed.staff ?? [],
+    months,
+  });
+}
+
 export function loadStore(): Store {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Partial<Store> & { months?: Record<string, unknown> };
-      const settings: Settings = {
-        tjm: parsed.settings?.tjm && parsed.settings.tjm > 0 ? parsed.settings.tjm : TJM,
-        husbandTjm:
-          parsed.settings?.husbandTjm && parsed.settings.husbandTjm > 0
-            ? parsed.settings.husbandTjm
-            : DEFAULT_SETTINGS.husbandTjm,
-        fixedCharges:
-          typeof parsed.settings?.fixedCharges === "number" && parsed.settings.fixedCharges >= 0
-            ? parsed.settings.fixedCharges
-            : DEFAULT_SETTINGS.fixedCharges,
-        fixedChargeItems: migrateFixedChargeItems(parsed.settings?.fixedChargeItems),
-        defaultVariableChargeBudget:
-          typeof parsed.settings?.defaultVariableChargeBudget === "number" &&
-          parsed.settings.defaultVariableChargeBudget >= 0
-            ? parsed.settings.defaultVariableChargeBudget
-            : DEFAULT_VARIABLE_CHARGE_BUDGET,
-        roundingStep: parsed.settings?.roundingStep === 1_000_000 ? 1_000_000 : 500_000,
-        theme: migrateTheme(parsed.settings?.theme),
-      };
-      const months: Store["months"] = {};
-      for (const [key, value] of Object.entries(parsed.months ?? {})) {
-        months[key] = migrateMonth(value, settings.defaultVariableChargeBudget);
-      }
-      addLegacyExpensesToMonths(months, parsed.expenses ?? [], settings.defaultVariableChargeBudget);
-      return {
-        expenses: [],
-        personalExpenses: isPersonalExpenseArray(parsed.personalExpenses) ? parsed.personalExpenses : [],
-        settings,
-        staff: parsed.staff ?? [],
-        months,
-      };
+      return migrateStore(JSON.parse(raw) as RawStore);
+    }
+    const legacyV5 = localStorage.getItem(LEGACY_V5);
+    if (legacyV5) {
+      return migrateStore(JSON.parse(legacyV5) as RawStore);
+    }
+    const legacyV4 = localStorage.getItem(LEGACY_V4);
+    if (legacyV4) {
+      return migrateStore(JSON.parse(legacyV4) as RawStore);
     }
     const legacyV3 = localStorage.getItem(LEGACY_V3);
     if (legacyV3) {
-      const parsed = JSON.parse(legacyV3) as Partial<Store> & { months?: Record<string, unknown> };
-      const settings: Settings = {
-        tjm: parsed.settings?.tjm && parsed.settings.tjm > 0 ? parsed.settings.tjm : TJM,
-        husbandTjm:
-          parsed.settings?.husbandTjm && parsed.settings.husbandTjm > 0
-            ? parsed.settings.husbandTjm
-            : DEFAULT_SETTINGS.husbandTjm,
-        fixedCharges:
-          typeof parsed.settings?.fixedCharges === "number" && parsed.settings.fixedCharges >= 0
-            ? parsed.settings.fixedCharges
-            : DEFAULT_SETTINGS.fixedCharges,
-        fixedChargeItems: migrateFixedChargeItems(parsed.settings?.fixedChargeItems),
-        defaultVariableChargeBudget:
-          typeof parsed.settings?.defaultVariableChargeBudget === "number" &&
-          parsed.settings.defaultVariableChargeBudget >= 0
-            ? parsed.settings.defaultVariableChargeBudget
-            : DEFAULT_VARIABLE_CHARGE_BUDGET,
-        roundingStep: parsed.settings?.roundingStep === 1_000_000 ? 1_000_000 : 500_000,
-        theme: migrateTheme(parsed.settings?.theme),
-      };
-      const months: Store["months"] = {};
-      for (const [key, value] of Object.entries(parsed.months ?? {})) {
-        months[key] = migrateMonth(value, settings.defaultVariableChargeBudget);
-      }
-      addLegacyExpensesToMonths(months, parsed.expenses ?? [], settings.defaultVariableChargeBudget);
-      return {
-        expenses: [],
-        personalExpenses: isPersonalExpenseArray(parsed.personalExpenses) ? parsed.personalExpenses : [],
-        settings,
-        staff: parsed.staff ?? [],
-        months,
-      };
+      return migrateStore(JSON.parse(legacyV3) as RawStore);
     }
     const legacyV2 = localStorage.getItem(LEGACY_V2);
     if (legacyV2) {
-      const parsed = JSON.parse(legacyV2) as Partial<Store> & { months?: Record<string, unknown> };
-      const settings: Settings = {
-        tjm: parsed.settings?.tjm && parsed.settings.tjm > 0 ? parsed.settings.tjm : TJM,
-        husbandTjm: DEFAULT_SETTINGS.husbandTjm,
-        fixedCharges: DEFAULT_FIXED_CHARGES,
-        fixedChargeItems: DEFAULT_FIXED_CHARGE_ITEMS,
-        defaultVariableChargeBudget: DEFAULT_VARIABLE_CHARGE_BUDGET,
-        roundingStep: parsed.settings?.roundingStep === 1_000_000 ? 1_000_000 : 500_000,
-        theme: migrateTheme(parsed.settings?.theme),
-      };
-      const months: Store["months"] = {};
-      for (const [key, value] of Object.entries(parsed.months ?? {})) {
-        months[key] = migrateMonth(value, settings.defaultVariableChargeBudget);
-      }
-      addLegacyExpensesToMonths(months, parsed.expenses ?? [], settings.defaultVariableChargeBudget);
-      return {
-        expenses: [],
-        personalExpenses: isPersonalExpenseArray(parsed.personalExpenses) ? parsed.personalExpenses : [],
-        settings,
-        staff: parsed.staff ?? [],
-        months,
-      };
+      return migrateStore(JSON.parse(legacyV2) as RawStore, { legacyV2: true });
     }
     const legacyV1 = localStorage.getItem(LEGACY_V1);
     if (legacyV1) {
       const parsed = JSON.parse(legacyV1) as unknown;
       if (isExpenseArray(parsed)) {
         const months: Store["months"] = {};
-        addLegacyExpensesToMonths(months, parsed, DEFAULT_VARIABLE_CHARGE_BUDGET);
-        return { ...empty, months };
+        addLegacyExpensesToMonths(months, parsed, DEFAULT_VARIABLE_CHARGE_BUDGET, DEFAULT_PROJECT_BUDGET);
+        return withStarterProjects({ ...empty, months });
       }
     }
   } catch {
-    return empty;
+    return withStarterProjects(empty);
   }
-  return empty;
+  return withStarterProjects(empty);
 }
 
 export function saveStore(store: Store) {
@@ -275,6 +361,7 @@ export function monthWork(store: Store, key: string) {
       ...EMPTY_MONTH,
       variableChargeBudget: store.settings.defaultVariableChargeBudget,
       variableCharges: DEFAULT_VARIABLE_CHARGE_ITEMS,
+      projectBudget: store.settings.defaultProjectBudget,
     }
   );
 }

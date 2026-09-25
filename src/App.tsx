@@ -1,6 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  BriefcaseBusiness,
+  CalendarDays,
+  CalendarMinus,
+  CalendarPlus,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  Home,
+  MoreVertical,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Save,
+  Settings as SettingsIcon,
+  Trash2,
+  WalletCards,
+} from "lucide-react";
 import { monthSnapshot, personSnapshot, roundDownToStep } from "./finance";
-import { loadStore, monthWork, saveStore } from "./storage";
+import { loadStore, monthWork, PROJECT_SEED_VERSION, saveStore, withStarterProjects } from "./storage";
 import {
   formatAmountInput,
   formatDays,
@@ -13,6 +31,7 @@ import {
   shiftMonth,
   THEMES,
   todayISO,
+  type BucketProject,
   type DayEntry,
   type DayFraction,
   type FixedChargeItem,
@@ -22,8 +41,8 @@ import {
 } from "./types";
 import "./App.css";
 
-type Tab = "synthese" | "travail" | "depenses" | "prevision" | "settings";
-type Sheet = "expense" | "fixedCharge" | "leave" | "extra" | "personal" | null;
+type Tab = "synthese" | "travail" | "depenses" | "prevision" | "projets" | "settings";
+type Sheet = "expense" | "fixedCharge" | "leave" | "extra" | "personal" | "projectBudget" | "bucketProject" | null;
 type Worker = "me" | "husband";
 type ExpenseView = "charges" | "personal";
 
@@ -41,6 +60,16 @@ const emptyPersonalExpense = {
 const emptyFixedCharge = {
   label: "",
   amount: "",
+};
+
+const emptyProjectBudget = {
+  amount: "",
+};
+
+const emptyBucketProject = {
+  title: "",
+  amount: "",
+  plannedMonth: "",
 };
 
 const emptyLeave = { fraction: "1" as "1" | "0.5" };
@@ -71,6 +100,45 @@ function ShortHead({ short, long }: { short: string; long: string }) {
     <abbr className="short-head" title={long} aria-label={long}>
       {short}
     </abbr>
+  );
+}
+
+function formatBucketMonth(key: string) {
+  return parseMonthKey(key).toLocaleDateString("fr-FR", {
+    month: "long",
+  });
+}
+
+function tabIcon(id: Tab) {
+  const props = { size: 18, strokeWidth: 2.2, "aria-hidden": true };
+  switch (id) {
+    case "synthese":
+      return <Home {...props} />;
+    case "travail":
+      return <BriefcaseBusiness {...props} />;
+    case "depenses":
+      return <WalletCards {...props} />;
+    case "prevision":
+      return <CalendarDays {...props} />;
+    case "projets":
+      return <ClipboardCheck {...props} />;
+    case "settings":
+      return <SettingsIcon {...props} />;
+  }
+}
+
+function IconText({
+  icon,
+  label,
+}: {
+  icon: ReactNode;
+  label: string;
+}) {
+  return (
+    <>
+      {icon}
+      <span>{label}</span>
+    </>
   );
 }
 
@@ -127,6 +195,21 @@ function defaultDateForMonth(key: string) {
 
 function fixedChargeTotal(settings: Settings) {
   return settings.fixedChargeItems.reduce((sum, item) => sum + item.amount, 0);
+}
+
+function availableProjectBudget(projectBudget: number, savingsBeforeProject: number) {
+  return Math.max(0, Math.min(projectBudget, savingsBeforeProject));
+}
+
+function projectSummary(projects: BucketProject[]) {
+  if (projects.length === 0) return "Aucun";
+  const names = projects.map((project) => project.title);
+  if (names.length <= 2) return names.join(", ");
+  return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+}
+
+function formatProjectAmount(amount: number) {
+  return amount > 0 ? formatMoney(amount) : "À chiffrer";
 }
 
 function husbandLeaves(work: Store["months"][string]) {
@@ -226,10 +309,21 @@ export default function App() {
   const [editingPersonalExpense, setEditingPersonalExpense] = useState<string | null>(null);
   const [fixedChargeForm, setFixedChargeForm] = useState(emptyFixedCharge);
   const [editingFixedCharge, setEditingFixedCharge] = useState<string | null>(null);
+  const [projectBudgetForm, setProjectBudgetForm] = useState(emptyProjectBudget);
+  const [editingProjectMonth, setEditingProjectMonth] = useState(month);
+  const [bucketProjectForm, setBucketProjectForm] = useState(emptyBucketProject);
+  const [editingBucketProject, setEditingBucketProject] = useState<string | null>(null);
+  const [projectMenu, setProjectMenu] = useState<string | null>(null);
 
   useEffect(() => {
     saveStore(store);
   }, [store]);
+
+  useEffect(() => {
+    if ((store.projectSeedVersion ?? 0) < PROJECT_SEED_VERSION) {
+      setStore((prev) => withStarterProjects(prev));
+    }
+  }, [store.projectSeedVersion]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = store.settings.theme;
@@ -264,8 +358,15 @@ export default function App() {
   const chargeStart = chargeFixed + chargeVariableBudget;
   const chargeRemaining = chargeVariableBudget - expensesTotal;
   const charges = chargeFixed + expensesTotal;
-  const reste = householdStartingSalary - charges;
-  const resteToDate = householdStartingSalaryToDate - charges;
+  const currentPlannedProjectTotal = store.projects
+    .filter((project) => project.plannedMonth === month)
+    .reduce((sum, project) => sum + project.amount, 0);
+  const monthlyProjectBudget = currentPlannedProjectTotal > 0 ? currentPlannedProjectTotal : work.projectBudget;
+  const savingsBeforeProject = householdStartingSalary - charges;
+  const savingsBeforeProjectToDate = householdStartingSalaryToDate - charges;
+  const projectAvailable = availableProjectBudget(monthlyProjectBudget, savingsBeforeProject);
+  const reste = savingsBeforeProject - monthlyProjectBudget;
+  const resteToDate = savingsBeforeProjectToDate - monthlyProjectBudget;
   const personalStart = snap.earned - currentStartingSalary;
   const monthlyPersonalExpenses = store.personalExpenses.filter((expense) => expense.date.startsWith(month));
   const personalSpent = monthlyPersonalExpenses.reduce((sum, expense) => sum + expense.amount, 0);
@@ -276,9 +377,23 @@ export default function App() {
     month ===
     `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
 
+  const annualProjects = useMemo(
+    () =>
+      store.projects
+        .filter((project) => project.year === selectedYear)
+        .slice()
+        .sort((a, b) => {
+          if (a.done !== b.done) return a.done ? 1 : -1;
+          return (a.plannedMonth ?? "9999-99").localeCompare(b.plannedMonth ?? "9999-99") || a.amount - b.amount;
+        }),
+    [selectedYear, store.projects],
+  );
+
   const annualRows = useMemo(
     () =>
       forecastMonthsForYear(selectedYear).map((key) => {
+        const plannedProjects = annualProjects.filter((project) => project.plannedMonth === key);
+        const plannedProjectTotal = plannedProjects.reduce((sum, project) => sum + project.amount, 0);
         const monthWorkData = monthWork(store, key);
         const monthSnap = monthSnapshot(key, store.settings, monthWorkData);
         const monthHusbandSnap = personSnapshot(
@@ -294,7 +409,10 @@ export default function App() {
         const householdStartingSalary = startingSalary + husbandStartingSalary;
         const fixedCharges = fixedChargeTotal(store.settings);
         const chargeTotal = fixedCharges + monthWorkData.variableChargeBudget;
-        const savings = householdStartingSalary - chargeTotal;
+        const savingsBeforeProject = householdStartingSalary - chargeTotal;
+        const projectBudget = plannedProjectTotal > 0 ? plannedProjectTotal : monthWorkData.projectBudget;
+        const projectAvailable = availableProjectBudget(projectBudget, savingsBeforeProject);
+        const savings = savingsBeforeProject - projectBudget;
 
         return {
           key,
@@ -314,12 +432,25 @@ export default function App() {
           personalPart,
           husbandPersonalPart,
           chargeTotal,
+          projectBudget,
+          projectAvailable,
+          plannedProjects,
+          plannedProjectTotal,
+          savingsBeforeProject,
           savings,
         };
       }),
-    [selectedYear, store],
+    [annualProjects, selectedYear, store],
   );
   const annualSavings = annualRows.reduce((sum, row) => sum + row.savings, 0);
+  const currentPlannedProjects = annualProjects.filter((project) => project.plannedMonth === month);
+  const currentProjectLabel =
+    currentPlannedProjects.length > 0
+      ? currentPlannedProjects.map((project) => project.title).join(" · ")
+      : "Aucun projet prévu";
+  const currentPlannedTotal = currentPlannedProjects.reduce((sum, project) => sum + project.amount, 0);
+  const plannedProjects = annualProjects.filter((project) => project.plannedMonth);
+  const unscheduledProjects = annualProjects.filter((project) => !project.plannedMonth);
 
   function goPrevious() {
     if (!canGoPrevious) return;
@@ -337,7 +468,10 @@ export default function App() {
     setStore((prev) => ({ ...prev, settings: updateSettings(prev.settings, patch) }));
   }
 
-  function updateMoneySetting(key: "tjm" | "husbandTjm" | "defaultVariableChargeBudget", value: string) {
+  function updateMoneySetting(
+    key: "tjm" | "husbandTjm" | "defaultVariableChargeBudget" | "defaultProjectBudget",
+    value: string,
+  ) {
     const amount = parseAmount(value);
     if (!Number.isFinite(amount) || amount < 0) return;
     patchSettings({ [key]: amount });
@@ -495,6 +629,30 @@ export default function App() {
     patchWork({ variableChargeBudget });
   }
 
+  function openProjectBudget(targetMonth = month) {
+    const targetWork = monthWork(store, targetMonth);
+    setEditingProjectMonth(targetMonth);
+    setProjectBudgetForm({ amount: formatAmountInput(targetWork.projectBudget) });
+    setSheet("projectBudget");
+  }
+
+  function saveProjectBudget(e: React.FormEvent) {
+    e.preventDefault();
+    const projectBudget = parseAmount(projectBudgetForm.amount);
+    if (!Number.isFinite(projectBudget) || projectBudget < 0) return;
+    setStore((prev) => ({
+      ...prev,
+      months: {
+        ...prev.months,
+        [editingProjectMonth]: {
+          ...monthWork(prev, editingProjectMonth),
+          projectBudget,
+        },
+      },
+    }));
+    setSheet(null);
+  }
+
   function saveLeave(e: React.FormEvent) {
     e.preventDefault();
     if (dayPerson === "husband") {
@@ -594,6 +752,141 @@ export default function App() {
     setSheet(null);
   }
 
+  function openBucketProject(project?: BucketProject) {
+    if (project) {
+      setEditingBucketProject(project.id);
+      setBucketProjectForm({
+        title: project.title,
+        amount: formatAmountInput(project.amount),
+        plannedMonth: project.plannedMonth ?? "",
+      });
+    } else {
+      setEditingBucketProject(null);
+      setBucketProjectForm(emptyBucketProject);
+    }
+    setSheet("bucketProject");
+  }
+
+  function saveBucketProject(e: React.FormEvent) {
+    e.preventDefault();
+    const amount = parseAmount(bucketProjectForm.amount);
+    if (!bucketProjectForm.title.trim() || !Number.isFinite(amount) || amount < 0) return;
+    const payload: BucketProject = {
+      id: editingBucketProject ?? crypto.randomUUID(),
+      title: bucketProjectForm.title.trim(),
+      amount,
+      year: selectedYear,
+      plannedMonth: bucketProjectForm.plannedMonth || undefined,
+      done: editingBucketProject
+        ? (store.projects.find((project) => project.id === editingBucketProject)?.done ?? false)
+        : false,
+    };
+    setStore((prev) => ({
+      ...prev,
+      projects: editingBucketProject
+        ? prev.projects.map((item) => (item.id === editingBucketProject ? payload : item))
+        : [payload, ...prev.projects],
+    }));
+    setSheet(null);
+  }
+
+  function removeBucketProject(id: string) {
+    setProjectMenu(null);
+    setStore((prev) => ({
+      ...prev,
+      projects: prev.projects.filter((item) => item.id !== id),
+    }));
+    setSheet(null);
+  }
+
+  function toggleProjectDone(id: string) {
+    setProjectMenu(null);
+    setStore((prev) => ({
+      ...prev,
+      projects: prev.projects.map((project) => (project.id === id ? { ...project, done: !project.done } : project)),
+    }));
+  }
+
+  function projectFeasibility(project: BucketProject) {
+    if (project.done) {
+      return { label: "Fait", tone: "good", detail: "Déjà coché comme réalisé." };
+    }
+    if (project.amount <= 0) {
+      return {
+        label: "À chiffrer",
+        tone: "muted",
+        detail: project.plannedMonth
+          ? `Planifié pour ${formatBucketMonth(project.plannedMonth)}, prix à compléter.`
+          : "Ajoute un prix quand tu veux le planifier.",
+      };
+    }
+    if (project.plannedMonth) {
+      return {
+        label: formatBucketMonth(project.plannedMonth),
+        tone: "next",
+        detail: `Planifié pour ${formatBucketMonth(project.plannedMonth)}.`,
+      };
+    }
+    return {
+      label: "Pas défini",
+      tone: "muted",
+      detail: "Choisis un mois quand tu veux le planifier.",
+    };
+  }
+
+  function renderProjectTableRow(project: BucketProject) {
+    const feasibility = projectFeasibility(project);
+    return (
+      <tr key={project.id} className={project.done ? "done" : ""}>
+        <td>
+          <label className="check-wrap">
+            <input type="checkbox" checked={project.done} onChange={() => toggleProjectDone(project.id)} />
+            <span>Fait</span>
+          </label>
+        </td>
+        <th scope="row">
+          <div className="project-title">
+            <strong>{project.title}</strong>
+            <small>{feasibility.detail}</small>
+          </div>
+        </th>
+        <td>{formatProjectAmount(project.amount)}</td>
+        <td>
+          <span className={`status-pill ${feasibility.tone}`}>{feasibility.label}</span>
+        </td>
+        <td className="project-actions-cell">
+          <div className="project-actions">
+            <button
+              type="button"
+              className="action-dots"
+              onClick={() => setProjectMenu((current) => (current === project.id ? null : project.id))}
+              aria-label={`Actions pour ${project.title}`}
+              aria-expanded={projectMenu === project.id}
+            >
+              <MoreVertical size={18} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+            {projectMenu === project.id && (
+              <div className="action-menu">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProjectMenu(null);
+                    openBucketProject(project);
+                  }}
+                >
+                  <IconText icon={<Pencil size={15} aria-hidden="true" />} label="Modifier" />
+                </button>
+                <button type="button" className="delete" onClick={() => removeBucketProject(project.id)}>
+                  <IconText icon={<Trash2 size={15} aria-hidden="true" />} label="Supprimer" />
+                </button>
+              </div>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
   const personalDraftAmount = parseAmount(personalForm.amount);
   const personalDraftValue = Number.isFinite(personalDraftAmount) ? personalDraftAmount : 0;
   const personalAvailable = personalExpenseAvailable();
@@ -608,17 +901,30 @@ export default function App() {
   const fab =
     tab === "depenses"
       ? expenseView === "charges"
-        ? { label: "+ Charge variable", action: () => openExpense() }
-        : { label: "+ Dépense perso", action: () => openPersonalExpense() }
+        ? { label: "Charge variable", action: () => openExpense() }
+        : { label: "Dépense perso", action: () => openPersonalExpense() }
       : tab === "travail"
-        ? { label: "+ Congé / jour sup", action: () => openDaySheet("leave", month, workPerson) }
-        : null;
+        ? { label: "Congé / jour sup", action: () => openDaySheet("leave", month, workPerson) }
+        : tab === "projets"
+          ? { label: "Projet", action: () => openBucketProject() }
+          : null;
 
   return (
     <div className={`app ${tab === "prevision" ? "wide" : ""}`}>
       <header className="top">
         <p className="eyebrow">Freelance · local</p>
-        <h1>Caisse</h1>
+        <div className="title-row">
+          <h1>Caisse</h1>
+          <button
+            type="button"
+            className={`icon-btn ${tab === "settings" ? "on" : ""}`}
+            onClick={() => setTab("settings")}
+            aria-label="Réglages"
+            title="Réglages"
+          >
+            <SettingsIcon size={20} strokeWidth={2.2} aria-hidden="true" />
+          </button>
+        </div>
         <div className="month-nav">
           <button
             type="button"
@@ -626,7 +932,7 @@ export default function App() {
             disabled={!canGoPrevious}
             aria-label={tab === "prevision" ? "Période précédente" : "Mois précédent"}
           >
-            ‹
+            <ChevronLeft size={18} strokeWidth={2.4} aria-hidden="true" />
           </button>
           <strong>{tab === "prevision" ? selectedYear : formatMonth(month)}</strong>
           <button
@@ -634,7 +940,7 @@ export default function App() {
             onClick={goNext}
             aria-label={tab === "prevision" ? "Période suivante" : "Mois suivant"}
           >
-            ›
+            <ChevronRight size={18} strokeWidth={2.4} aria-hidden="true" />
           </button>
         </div>
       </header>
@@ -683,6 +989,11 @@ export default function App() {
               <small>
                 {formatMoney(chargeFixed)} fixe · {formatMoney(expensesTotal)} variable
               </small>
+            </article>
+            <article>
+              <p className="muted">Projet du mois</p>
+              <strong>{formatMoney(monthlyProjectBudget)}</strong>
+              <small>Disponible selon le mois : {formatMoney(projectAvailable)}</small>
             </article>
             {isCurrent && (
               <article>
@@ -734,17 +1045,17 @@ export default function App() {
 
           <div className="split-actions">
             <button type="button" className="ghost" onClick={() => openDaySheet("leave", month, workPerson)}>
-              + Congé
+              <IconText icon={<CalendarMinus size={16} aria-hidden="true" />} label="Congé" />
             </button>
             <button type="button" className="ghost" onClick={() => openDaySheet("extra", month, workPerson)}>
-              + Sup
+              <IconText icon={<CalendarPlus size={16} aria-hidden="true" />} label="Sup" />
             </button>
           </div>
 
           {workPerson === "husband" && (
             work.husbandScheduleCustom ? (
               <button type="button" className="ghost mini" onClick={resetHusbandSchedule}>
-                Même calendrier que moi
+                <IconText icon={<RotateCcw size={15} aria-hidden="true" />} label="Même calendrier que moi" />
               </button>
             ) : (
               <p className="hint">Par défaut, les dates reprennent les mêmes congés et jours sup que moi.</p>
@@ -765,7 +1076,7 @@ export default function App() {
                   </small>
                 </span>
                 <button type="button" className="link" onClick={() => removeLeave(item.id, workPerson)}>
-                  Retirer
+                  <IconText icon={<Trash2 size={14} aria-hidden="true" />} label="Retirer" />
                 </button>
               </div>
             ))
@@ -785,7 +1096,7 @@ export default function App() {
                   </small>
                 </span>
                 <button type="button" className="link" onClick={() => removeExtra(item.id, workPerson)}>
-                  Retirer
+                  <IconText icon={<Trash2 size={14} aria-hidden="true" />} label="Retirer" />
                 </button>
               </div>
             ))
@@ -843,7 +1154,7 @@ export default function App() {
             <div className="section-head">
               <h2 className="section-title">Charges fixes</h2>
               <button type="button" className="ghost mini" onClick={() => openFixedCharge()}>
-                + Ajouter
+                <IconText icon={<Plus size={15} aria-hidden="true" />} label="Ajouter" />
               </button>
             </div>
             {store.settings.fixedChargeItems.map((item) => (
@@ -932,12 +1243,83 @@ export default function App() {
         </section>
       )}
 
+      {tab === "projets" && (
+        <section className="stack">
+          <section className="hero compact">
+            <div>
+              <p className="muted">Projet du mois</p>
+              <p className="amount project-label">{currentProjectLabel}</p>
+            </div>
+            <p className="count">
+              {currentPlannedTotal > 0 ? formatMoney(currentPlannedTotal) : "0 projet"}
+            </p>
+          </section>
+
+          <section className="card project-month-card">
+            <div className="section-head">
+              <h2 className="section-title">Projet de {formatMonth(month)}</h2>
+              {currentPlannedTotal > 0 && <span className="status-pill">{formatMoney(currentPlannedTotal)}</span>}
+            </div>
+            {currentPlannedProjects.length > 0 ? (
+              <div className="project-month-list">
+                {currentPlannedProjects.map((project) => (
+                  <button key={project.id} type="button" className="row" onClick={() => openBucketProject(project)}>
+                    <span className="row-main">
+                      <strong>{project.title}</strong>
+                      <small>{project.done ? "Déjà fait" : "Planifié ce mois-ci"}</small>
+                    </span>
+                    <span className="row-amt">{formatMoney(project.amount)}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="empty">Aucun projet planifié pour ce mois.</p>
+            )}
+          </section>
+
+          <section className="stack">
+            <div className="section-head">
+              <h2 className="section-title">Tableau bucket list</h2>
+              <button type="button" className="ghost mini" onClick={() => openBucketProject()}>
+                <IconText icon={<Plus size={15} aria-hidden="true" />} label="Ajouter" />
+              </button>
+            </div>
+            {annualProjects.length === 0 ? (
+              <p className="empty">Aucun projet dans la bucket list.</p>
+            ) : (
+              <div className="bucket-table-wrap">
+                <table className="bucket-table">
+                  <thead>
+                    <tr>
+                      <th>Fait</th>
+                      <th>Projet</th>
+                      <th>Prix</th>
+                      <th>Mois</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>{annualProjects.map(renderProjectTableRow)}</tbody>
+                </table>
+              </div>
+            )}
+            <p className="hint">
+              {plannedProjects.length} planifié{plannedProjects.length > 1 ? "s" : ""} · {unscheduledProjects.length} sans mois ·{" "}
+              {annualProjects.length} projet{annualProjects.length > 1 ? "s" : ""} au total
+            </p>
+          </section>
+        </section>
+      )}
+
       {tab === "prevision" && (
         <section className="stack">
           <section className="forecast-controls">
             <div className="setting-static">
               <span>Charge / mois</span>
               <strong>{formatMoney(chargeStart)}</strong>
+            </div>
+            <div className="setting-static">
+              <span>Projet / mois</span>
+              <strong>{formatMoney(monthlyProjectBudget)}</strong>
             </div>
             <label>
               Arrondi salaire départ
@@ -978,7 +1360,9 @@ export default function App() {
                   <th className="col-mine"><ShortHead short="Perso" long="Ma somme perso" /></th>
                   <th className="col-partner"><ShortHead short="Perso.M" long="Somme perso de mon mari" /></th>
                   <th className="col-shared"><ShortHead short="Ch" long="Charge" /></th>
-                  <th className="col-shared"><ShortHead short="Eco" long="Économie" /></th>
+                  <th className="col-shared"><ShortHead short="Proj.Liste" long="Projets planifiés" /></th>
+                  <th className="col-shared"><ShortHead short="Proj.Bud" long="Budget projet du mois" /></th>
+                  <th className="col-shared"><ShortHead short="Eco" long="Économie après projet" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -1024,6 +1408,26 @@ export default function App() {
                     <td className="col-mine">{formatMoney(row.personalPart)}</td>
                     <td className="col-partner">{formatMoney(row.husbandPersonalPart)}</td>
                     <td className="col-shared">{formatMoney(row.chargeTotal)}</td>
+                    <td className="col-shared text-cell">
+                      <span>{projectSummary(row.plannedProjects)}</span>
+                      {row.plannedProjectTotal > 0 && <small>{formatMoney(row.plannedProjectTotal)}</small>}
+                    </td>
+                    <td className="col-shared">
+                      <button
+                        type="button"
+                        className="table-action"
+                        onClick={() => {
+                          if (row.plannedProjectTotal > 0) {
+                            setMonth(row.key);
+                            setTab("projets");
+                          } else {
+                            openProjectBudget(row.key);
+                          }
+                        }}
+                      >
+                        {formatMoney(row.projectBudget)}
+                      </button>
+                    </td>
                     <td className={`col-shared ${row.savings < 0 ? "neg" : ""}`}>{formatMoney(row.savings)}</td>
                   </tr>
                 ))}
@@ -1032,7 +1436,7 @@ export default function App() {
           </section>
 
           <section className="annual-total">
-            <p className="muted">Total économies de l’année</p>
+            <p className="muted">Total économies de l’année après projets</p>
             <strong className={annualSavings < 0 ? "neg" : ""}>{formatMoney(annualSavings)}</strong>
           </section>
         </section>
@@ -1075,6 +1479,14 @@ export default function App() {
                 inputMode="decimal"
                 value={formatAmountInput(store.settings.defaultVariableChargeBudget)}
                 onChange={(e) => updateMoneySetting("defaultVariableChargeBudget", e.target.value)}
+              />
+            </label>
+            <label>
+              Projet du mois par défaut
+              <input
+                inputMode="decimal"
+                value={formatAmountInput(store.settings.defaultProjectBudget)}
+                onChange={(e) => updateMoneySetting("defaultProjectBudget", e.target.value)}
               />
             </label>
             <label>
@@ -1121,18 +1533,19 @@ export default function App() {
             ["travail", "Travail"],
             ["depenses", "Dépenses"],
             ["prevision", "Prévision"],
-            ["settings", "Réglages"],
+            ["projets", "Projets"],
           ] as const
         ).map(([id, label]) => (
           <button key={id} type="button" className={tab === id ? "on" : ""} onClick={() => setTab(id)}>
-            {label}
+            {tabIcon(id)}
+            <span>{label}</span>
           </button>
         ))}
       </nav>
 
       {fab && (
         <button type="button" className="fab" onClick={fab.action}>
-          {fab.label}
+          <IconText icon={<Plus size={18} aria-hidden="true" />} label={fab.label} />
         </button>
       )}
 
@@ -1172,7 +1585,7 @@ export default function App() {
             <div className="actions">
               {editingExpense && (
                 <button type="button" className="danger" onClick={() => removeExpense(editingExpense)}>
-                  Supprimer
+                  <IconText icon={<Trash2 size={15} aria-hidden="true" />} label="Supprimer" />
                 </button>
               )}
               <button
@@ -1185,7 +1598,7 @@ export default function App() {
                   !expenseForm.label.trim()
                 }
               >
-                Enregistrer
+                <IconText icon={<Save size={15} aria-hidden="true" />} label="Enregistrer" />
               </button>
             </div>
           </form>
@@ -1220,7 +1633,7 @@ export default function App() {
             <div className="actions">
               {editingFixedCharge && (
                 <button type="button" className="danger" onClick={() => removeFixedCharge(editingFixedCharge)}>
-                  Supprimer
+                  <IconText icon={<Trash2 size={15} aria-hidden="true" />} label="Supprimer" />
                 </button>
               )}
               <button
@@ -1232,7 +1645,7 @@ export default function App() {
                   parseAmount(fixedChargeForm.amount) < 0
                 }
               >
-                Enregistrer
+                <IconText icon={<Save size={15} aria-hidden="true" />} label="Enregistrer" />
               </button>
             </div>
           </form>
@@ -1262,10 +1675,10 @@ export default function App() {
             </p>
             <div className="actions">
               <button type="button" className="ghost" onClick={() => openDaySheet("extra", month, dayPerson)}>
-                Jour sup
+                <IconText icon={<CalendarPlus size={16} aria-hidden="true" />} label="Jour sup" />
               </button>
               <button type="submit" className="primary">
-                Enregistrer
+                <IconText icon={<Save size={15} aria-hidden="true" />} label="Enregistrer" />
               </button>
             </div>
           </form>
@@ -1303,10 +1716,10 @@ export default function App() {
             </p>
             <div className="actions">
               <button type="button" className="ghost" onClick={() => openDaySheet("leave", month, dayPerson)}>
-                Congé
+                <IconText icon={<CalendarMinus size={16} aria-hidden="true" />} label="Congé" />
               </button>
               <button type="submit" className="primary">
-                Enregistrer
+                <IconText icon={<Save size={15} aria-hidden="true" />} label="Enregistrer" />
               </button>
             </div>
           </form>
@@ -1360,7 +1773,7 @@ export default function App() {
             <div className="actions">
               {editingPersonalExpense && (
                 <button type="button" className="danger" onClick={() => removePersonalExpense(editingPersonalExpense)}>
-                  Supprimer
+                  <IconText icon={<Trash2 size={15} aria-hidden="true" />} label="Supprimer" />
                 </button>
               )}
               <button
@@ -1373,7 +1786,105 @@ export default function App() {
                   !personalForm.label.trim()
                 }
               >
-                Enregistrer
+                <IconText icon={<Save size={15} aria-hidden="true" />} label="Enregistrer" />
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {sheet === "projectBudget" && (
+        <div className="overlay" onClick={() => setSheet(null)}>
+          <form className="sheet" onClick={(e) => e.stopPropagation()} onSubmit={saveProjectBudget}>
+            <div className="sheet-title">
+              <h2>Projet du mois</h2>
+              <strong>{formatMonth(editingProjectMonth)}</strong>
+            </div>
+            <label>
+              Budget
+              <input
+                inputMode="decimal"
+                value={projectBudgetForm.amount}
+                onChange={(e) => setProjectBudgetForm({ amount: e.target.value })}
+                placeholder="1000"
+                autoFocus
+                required
+              />
+            </label>
+            <p className="hint">Écris 1000 pour 1 000 000 Ar.</p>
+            <div className="actions">
+              <button
+                type="submit"
+                className="primary"
+                disabled={
+                  !Number.isFinite(parseAmount(projectBudgetForm.amount)) || parseAmount(projectBudgetForm.amount) < 0
+                }
+              >
+                <IconText icon={<Save size={15} aria-hidden="true" />} label="Enregistrer" />
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {sheet === "bucketProject" && (
+        <div className="overlay" onClick={() => setSheet(null)}>
+          <form className="sheet" onClick={(e) => e.stopPropagation()} onSubmit={saveBucketProject}>
+            <div className="sheet-title">
+              <h2>{editingBucketProject ? "Modifier projet" : "Projet"}</h2>
+              <strong>{selectedYear}</strong>
+            </div>
+            <label>
+              Libellé
+              <input
+                value={bucketProjectForm.title}
+                onChange={(e) => setBucketProjectForm({ ...bucketProjectForm, title: e.target.value })}
+                placeholder="Téléphone, voyage, meuble…"
+                autoFocus
+                required
+              />
+            </label>
+            <label>
+              Prix
+              <input
+                inputMode="decimal"
+                value={bucketProjectForm.amount}
+                onChange={(e) => setBucketProjectForm({ ...bucketProjectForm, amount: e.target.value })}
+                placeholder="0 si pas encore chiffré"
+                required
+              />
+            </label>
+            <label>
+              Mois prévu
+              <select
+                value={bucketProjectForm.plannedMonth}
+                onChange={(e) => setBucketProjectForm({ ...bucketProjectForm, plannedMonth: e.target.value })}
+              >
+                <option value="">Pas encore défini</option>
+                {forecastMonthsForYear(selectedYear).map((key) => (
+                  <option key={key} value={key}>
+                    {formatMonth(key)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="hint">Sans mois prévu, le projet reste dans la checklist libre de {selectedYear}.</p>
+            <div className="actions">
+              {editingBucketProject && (
+                <button type="button" className="danger" onClick={() => removeBucketProject(editingBucketProject)}>
+                  <IconText icon={<Trash2 size={15} aria-hidden="true" />} label="Supprimer" />
+                </button>
+              )}
+              <button
+                type="submit"
+                className="primary"
+                disabled={
+                  !bucketProjectForm.title.trim() ||
+                  !Number.isFinite(parseAmount(bucketProjectForm.amount)) ||
+                  parseAmount(bucketProjectForm.amount) < 0
+                }
+              >
+                <IconText icon={<Save size={15} aria-hidden="true" />} label="Enregistrer" />
               </button>
             </div>
           </form>
