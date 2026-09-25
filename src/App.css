@@ -200,6 +200,27 @@ h1 {
   font-weight: 650;
 }
 
+.summary-kpis article {
+  background: #6f4215;
+  color: #fff3d6;
+  border-color: #b7790f;
+  box-shadow: 0 14px 32px rgba(8, 4, 1, 0.28);
+}
+
+.summary-kpis article:hover {
+  border-color: var(--accent-bright);
+}
+
+.summary-kpis .muted,
+.summary-kpis small,
+.summary-kpis strong {
+  color: #fff3d6;
+}
+
+.summary-kpis small {
+  opacity: 0.78;
+}
+
 .kpis small,
 .hint {
   display: block;

@@ -912,7 +912,7 @@ export default function App() {
   return (
     <div className={`app ${tab === "prevision" ? "wide" : ""}`}>
       <header className="top">
-        <p className="eyebrow">Freelance · local</p>
+        <p className="eyebrow">Money Manager</p>
         <div className="title-row">
           <h1>Caisse</h1>
           <button
@@ -957,7 +957,7 @@ export default function App() {
             </p>
           </section>
 
-          <section className="kpis">
+          <section className="kpis summary-kpis">
             <article>
               <p className="muted">Mon salaire calculé</p>
               <strong>{formatMoney(snap.earned)}</strong>
@@ -992,8 +992,12 @@ export default function App() {
             </article>
             <article>
               <p className="muted">Projet du mois</p>
-              <strong>{formatMoney(monthlyProjectBudget)}</strong>
-              <small>Disponible selon le mois : {formatMoney(projectAvailable)}</small>
+              <strong>{currentPlannedProjects.length > 0 ? currentProjectLabel : formatMoney(monthlyProjectBudget)}</strong>
+              <small>
+                {currentPlannedProjects.length > 0
+                  ? `Budget : ${formatMoney(monthlyProjectBudget)}`
+                  : `Disponible selon le mois : ${formatMoney(projectAvailable)}`}
+              </small>
             </article>
             {isCurrent && (
               <article>
