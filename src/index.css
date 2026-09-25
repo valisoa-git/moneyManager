@@ -12,6 +12,8 @@
   --accent-bright: #ffc14a;
   --accent-dim: #5a3512;
   --danger: #f07755;
+  --summary-bg: #6f4215;
+  --summary-text: #fff3d6;
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
   font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   line-height: 1.4;
@@ -21,6 +23,92 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme="clair"] {
+  color-scheme: light;
+  --bg: #f8f3ea;
+  --bg-elev: #ffffff;
+  --bg-soft: #f0e2cf;
+  --line: #d4b98d;
+  --line-strong: #b07a24;
+  --text: #24150d;
+  --muted: #7a5626;
+  --accent: #d99a18;
+  --accent-bright: #a86905;
+  --accent-dim: #f6ddb2;
+  --danger: #bd3b28;
+  --summary-bg: #d99a18;
+  --summary-text: #24150d;
+  --shadow: 0 18px 45px rgba(74, 48, 20, 0.16);
+}
+
+:root[data-theme="violet"] {
+  --bg: #180f26;
+  --bg-elev: #24143a;
+  --bg-soft: #342054;
+  --line: #5e3f8f;
+  --line-strong: #8e62d6;
+  --text: #f5ecff;
+  --muted: #cfb6ff;
+  --accent: #b47cff;
+  --accent-bright: #dec4ff;
+  --accent-dim: #4c2b7a;
+  --danger: #ff7b9c;
+  --summary-bg: #6e43b8;
+  --summary-text: #fff7ff;
+  --shadow: 0 18px 50px rgba(7, 3, 16, 0.44);
+}
+
+:root[data-theme="rose"] {
+  --bg: #251018;
+  --bg-elev: #351723;
+  --bg-soft: #4b2232;
+  --line: #7b4059;
+  --line-strong: #c45b83;
+  --text: #fff0f5;
+  --muted: #f1aeca;
+  --accent: #f06a9f;
+  --accent-bright: #ffc0d8;
+  --accent-dim: #73314a;
+  --danger: #ff8a70;
+  --summary-bg: #a93f6d;
+  --summary-text: #fff4f8;
+  --shadow: 0 18px 50px rgba(19, 4, 10, 0.42);
+}
+
+:root[data-theme="rouge"] {
+  --bg: #220c0b;
+  --bg-elev: #341211;
+  --bg-soft: #501e1a;
+  --line: #86382f;
+  --line-strong: #d75b45;
+  --text: #fff0e9;
+  --muted: #f1ad9d;
+  --accent: #ef6046;
+  --accent-bright: #ffb6a6;
+  --accent-dim: #7a2b22;
+  --danger: #ffce55;
+  --summary-bg: #a33a2e;
+  --summary-text: #fff5ee;
+  --shadow: 0 18px 50px rgba(21, 3, 2, 0.43);
+}
+
+:root[data-theme="violet-nuit"] {
+  --bg: #0f0a1e;
+  --bg-elev: #19112d;
+  --bg-soft: #251a42;
+  --line: #493771;
+  --line-strong: #7561bd;
+  --text: #eee9ff;
+  --muted: #afa4df;
+  --accent: #8d7bff;
+  --accent-bright: #c9c1ff;
+  --accent-dim: #33265f;
+  --danger: #ff6f91;
+  --summary-bg: #43328f;
+  --summary-text: #f7f4ff;
+  --shadow: 0 18px 55px rgba(4, 2, 13, 0.54);
 }
 
 * {

@@ -56,12 +56,12 @@ export type DayEntry = {
 };
 
 export const THEMES = [
-  { id: "chocolat", label: "Chocolat moutarde" },
-  { id: "foret", label: "Forêt dorée" },
-  { id: "ocean", label: "Océan corail" },
-  { id: "prune", label: "Prune miel" },
-  { id: "graphite", label: "Graphite citron" },
-  { id: "rose", label: "Rose cacao" },
+  { id: "chocolat", label: "Dark chocolat" },
+  { id: "clair", label: "White mode" },
+  { id: "violet", label: "Violet" },
+  { id: "rose", label: "Rose" },
+  { id: "rouge", label: "Rouge" },
+  { id: "violet-nuit", label: "Violet nuit" },
 ] as const;
 
 export type ThemeId = (typeof THEMES)[number]["id"];
