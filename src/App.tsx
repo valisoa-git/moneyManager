@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BriefcaseBusiness,
   CalendarDays,
@@ -8,6 +8,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Home,
+  LogOut,
   MoreVertical,
   Pencil,
   Plus,
@@ -17,8 +18,11 @@ import {
   Trash2,
   WalletCards,
 } from "lucide-react";
+import type { Session } from "@supabase/supabase-js";
+import { loadCloudStore, saveCloudStore } from "./cloudStore";
 import { monthSnapshot, personSnapshot, roundDownToStep } from "./finance";
 import { loadStore, monthWork, PROJECT_SEED_VERSION, saveStore, withStarterProjects } from "./storage";
+import { isSupabaseConfigured, supabase } from "./supabaseClient";
 import {
   formatAmountInput,
   formatDays,
@@ -291,6 +295,79 @@ function CalendarPicker({
   );
 }
 
+function AuthScreen({
+  mode,
+  email,
+  password,
+  busy,
+  error,
+  message,
+  onModeChange,
+  onEmailChange,
+  onPasswordChange,
+  onSubmit,
+}: {
+  mode: "signin" | "signup";
+  email: string;
+  password: string;
+  busy: boolean;
+  error: string;
+  message: string;
+  onModeChange: (mode: "signin" | "signup") => void;
+  onEmailChange: (value: string) => void;
+  onPasswordChange: (value: string) => void;
+  onSubmit: (event: React.FormEvent) => void;
+}) {
+  const isSignup = mode === "signup";
+
+  return (
+    <main className="app auth-app">
+      <section className="auth-panel">
+        <p className="eyebrow">Money Manager</p>
+        <h1>{isSignup ? "Créer un compte" : "Connexion"}</h1>
+        <p className="hint">Connecte-toi pour synchroniser tes données entre ordinateur et téléphone.</p>
+
+        <form className="auth-form" onSubmit={onSubmit}>
+          <label>
+            Email
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => onEmailChange(event.target.value)}
+              placeholder="ton@email.com"
+              autoComplete="email"
+              required
+            />
+          </label>
+          <label>
+            Mot de passe
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => onPasswordChange(event.target.value)}
+              placeholder="Minimum 6 caractères"
+              autoComplete={isSignup ? "new-password" : "current-password"}
+              minLength={6}
+              required
+            />
+          </label>
+
+          {error && <p className="auth-error">{error}</p>}
+          {message && <p className="auth-message">{message}</p>}
+
+          <button type="submit" className="primary" disabled={busy}>
+            {busy ? "Patiente..." : isSignup ? "Créer mon compte" : "Se connecter"}
+          </button>
+        </form>
+
+        <button type="button" className="ghost auth-switch" onClick={() => onModeChange(isSignup ? "signin" : "signup")}>
+          {isSignup ? "J'ai déjà un compte" : "Créer un nouveau compte"}
+        </button>
+      </section>
+    </main>
+  );
+}
+
 export default function App() {
   const [store, setStore] = useState<Store>(() => loadStore());
   const [month, setMonth] = useState(APP_START_MONTH);
@@ -314,10 +391,103 @@ export default function App() {
   const [bucketProjectForm, setBucketProjectForm] = useState(emptyBucketProject);
   const [editingBucketProject, setEditingBucketProject] = useState<string | null>(null);
   const [projectMenu, setProjectMenu] = useState<string | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+  const [cloudLoading, setCloudLoading] = useState(false);
+  const [cloudError, setCloudError] = useState("");
+  const [syncStatus, setSyncStatus] = useState(isSupabaseConfigured ? "Déconnecté" : "Local");
+  const cloudUserId = useRef<string | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     saveStore(store);
-  }, [store]);
+    const userId = session?.user.id;
+    if (!supabase || !userId || cloudUserId.current !== userId) return;
+
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+    }
+    setSyncStatus("Sauvegarde...");
+    saveTimer.current = setTimeout(() => {
+      saveCloudStore(userId, store)
+        .then(() => {
+          setCloudError("");
+          setSyncStatus("Synchronisé");
+        })
+        .catch((error: unknown) => {
+          setCloudError(error instanceof Error ? error.message : "Impossible de sauvegarder dans Supabase.");
+          setSyncStatus("Erreur cloud");
+        });
+    }, 650);
+
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [store, session?.user.id]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!mounted) return;
+      if (error) setAuthError(error.message);
+      setSession(data.session);
+      setAuthLoading(false);
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      if (!nextSession) {
+        cloudUserId.current = null;
+        setSyncStatus("Déconnecté");
+        setCloudLoading(false);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const userId = session?.user.id;
+    if (!supabase || !userId) return;
+    let mounted = true;
+
+    setCloudLoading(true);
+    setCloudError("");
+    setSyncStatus("Chargement cloud...");
+    loadCloudStore(userId)
+      .then((cloudStore) => {
+        if (!mounted) return;
+        const nextStore = cloudStore ?? loadStore();
+        cloudUserId.current = userId;
+        setStore(nextStore);
+        saveStore(nextStore);
+        if (!cloudStore) void saveCloudStore(userId, nextStore);
+        setSyncStatus(cloudStore ? "Synchronisé" : "Cloud initialisé");
+      })
+      .catch((error: unknown) => {
+        if (!mounted) return;
+        setCloudError(error instanceof Error ? error.message : "Impossible de charger les données Supabase.");
+        setSyncStatus("Erreur cloud");
+      })
+      .finally(() => {
+        if (mounted) setCloudLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [session?.user.id]);
 
   useEffect(() => {
     if ((store.projectSeedVersion ?? 0) < PROJECT_SEED_VERSION) {
@@ -887,6 +1057,42 @@ export default function App() {
     );
   }
 
+  async function handleAuthSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!supabase) {
+      setAuthError("Supabase n'est pas encore configuré.");
+      return;
+    }
+    setAuthBusy(true);
+    setAuthError("");
+    setAuthMessage("");
+
+    const credentials = {
+      email: authEmail.trim(),
+      password: authPassword,
+    };
+    const { data, error } =
+      authMode === "signup"
+        ? await supabase.auth.signUp(credentials)
+        : await supabase.auth.signInWithPassword(credentials);
+
+    if (error) {
+      setAuthError(error.message);
+    } else if (authMode === "signup" && !data.session) {
+      setAuthMessage("Compte créé. Vérifie ton email si Supabase demande une confirmation.");
+    } else {
+      setAuthMessage("");
+    }
+    setAuthBusy(false);
+  }
+
+  async function handleSignOut() {
+    if (!supabase) return;
+    setSheet(null);
+    setProjectMenu(null);
+    await supabase.auth.signOut();
+  }
+
   const personalDraftAmount = parseAmount(personalForm.amount);
   const personalDraftValue = Number.isFinite(personalDraftAmount) ? personalDraftAmount : 0;
   const personalAvailable = personalExpenseAvailable();
@@ -909,22 +1115,77 @@ export default function App() {
           ? { label: "Projet", action: () => openBucketProject() }
           : null;
 
+  if (!isSupabaseConfigured || !supabase) {
+    return (
+      <main className="app auth-app">
+        <section className="auth-panel">
+          <p className="eyebrow">Money Manager</p>
+          <h1>Supabase manque</h1>
+          <p className="hint">
+            Ajoute VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY dans Vercel pour activer la connexion.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  if (authLoading) {
+    return (
+      <main className="app auth-app">
+        <section className="auth-panel">
+          <p className="eyebrow">Money Manager</p>
+          <h1>Chargement</h1>
+          <p className="hint">Vérification de la session...</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!session) {
+    return (
+      <AuthScreen
+        mode={authMode}
+        email={authEmail}
+        password={authPassword}
+        busy={authBusy}
+        error={authError}
+        message={authMessage}
+        onModeChange={(nextMode) => {
+          setAuthMode(nextMode);
+          setAuthError("");
+          setAuthMessage("");
+        }}
+        onEmailChange={setAuthEmail}
+        onPasswordChange={setAuthPassword}
+        onSubmit={handleAuthSubmit}
+      />
+    );
+  }
+
   return (
     <div className={`app ${tab === "prevision" ? "wide" : ""}`}>
       <header className="top">
         <p className="eyebrow">Money Manager</p>
         <div className="title-row">
           <h1>Caisse</h1>
-          <button
-            type="button"
-            className={`icon-btn ${tab === "settings" ? "on" : ""}`}
-            onClick={() => setTab("settings")}
-            aria-label="Réglages"
-            title="Réglages"
-          >
-            <SettingsIcon size={20} strokeWidth={2.2} aria-hidden="true" />
-          </button>
+          <div className="header-actions">
+            <span className={`sync-pill ${cloudError ? "error" : ""}`}>{syncStatus}</span>
+            <button
+              type="button"
+              className={`icon-btn ${tab === "settings" ? "on" : ""}`}
+              onClick={() => setTab("settings")}
+              aria-label="Réglages"
+              title="Réglages"
+            >
+              <SettingsIcon size={20} strokeWidth={2.2} aria-hidden="true" />
+            </button>
+            <button type="button" className="icon-btn" onClick={handleSignOut} aria-label="Déconnexion" title="Déconnexion">
+              <LogOut size={19} strokeWidth={2.2} aria-hidden="true" />
+            </button>
+          </div>
         </div>
+        {cloudError && <p className="sync-error">{cloudError}</p>}
+        {cloudLoading && <p className="sync-error neutral">Chargement des données cloud...</p>}
         <div className="month-nav">
           <button
             type="button"

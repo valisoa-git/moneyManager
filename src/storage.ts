@@ -314,6 +314,11 @@ function migrateStore(parsed: RawStore, options: { legacyV2?: boolean } = {}): S
   });
 }
 
+export function normalizeStore(raw: unknown): Store {
+  if (!raw || typeof raw !== "object") return withStarterProjects(empty);
+  return migrateStore(raw as RawStore);
+}
+
 export function loadStore(): Store {
   try {
     const raw = localStorage.getItem(KEY);

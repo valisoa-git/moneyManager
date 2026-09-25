@@ -37,4 +37,21 @@ npm install
 npm run dev
 ```
 
-Données dans `localStorage`. Les anciennes dépenses `v1` sont reprises.
+## Supabase
+
+L'application utilise Supabase pour l'authentification et la synchronisation cloud.
+
+Variables à configurer dans Vercel:
+
+```text
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```
+
+Pour créer la table cloud, ouvrir Supabase SQL Editor et exécuter:
+
+```text
+supabase/schema.sql
+```
+
+Une copie locale reste gardée dans `localStorage` comme secours.
