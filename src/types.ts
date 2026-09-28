@@ -56,12 +56,12 @@ export type DayEntry = {
 };
 
 export const THEMES = [
-  { id: "chocolat", label: "Dark chocolat" },
-  { id: "clair", label: "White mode" },
+  { id: "noir", label: "Noir" },
+  { id: "clair", label: "Blanc" },
   { id: "violet", label: "Violet" },
   { id: "rose", label: "Rose" },
   { id: "rouge", label: "Rouge" },
-  { id: "violet-nuit", label: "Violet nuit" },
+  { id: "fleur", label: "Fleur" },
 ] as const;
 
 export type ThemeId = (typeof THEMES)[number]["id"];
@@ -134,7 +134,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultVariableChargeBudget: DEFAULT_VARIABLE_CHARGE_BUDGET,
   defaultProjectBudget: DEFAULT_PROJECT_BUDGET,
   roundingStep: 500_000,
-  theme: "chocolat",
+  theme: "noir",
 };
 
 export const EMPTY_MONTH: MonthWork = {
