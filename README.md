@@ -22,7 +22,7 @@ Suivi freelance **local**: TJM, jours ouvrables, congés, heures sup, charges, b
 - L'application démarre en juillet 2026
 - Prévision annuelle = année civile avec jours ouvrables, congés, jours sup, jours travaillés, total salaire, salaire départ arrondi vers le bas, perso, charge fixe, budget variable, projet du mois, achats, reste variable et économie
 - Pour 2026, le tableau commence en juillet; 2027 reste dans le tableau 2027
-- Salaire départ = total salaire arrondi vers le bas au pas choisi (500 000 ou 1 000 000 Ar) jusqu'en août 2027, puis arrondi vers le bas à 100 000 Ar à partir de septembre 2027
+- Salaire départ = total salaire arrondi vers le bas au pas choisi (500 000 ou 1 000 000 Ar) jusqu'en août 2026, puis arrondi vers le bas à 100 000 Ar à partir de septembre 2026
 - Perso = total salaire − salaire départ jusqu'en août 2026, puis 300 000 Ar par mois à partir de septembre 2026
 - Exemple en pas de 500 000 Ar: 5 600 000 Ar donne 5 500 000 Ar de départ et 100 000 Ar de perso
 - Dépenses perso = suivi séparé avec libellé + valeur, limité au montant Perso du mois

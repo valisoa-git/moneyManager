@@ -1863,7 +1863,7 @@ export default function App() {
               />
             </label>
             <label>
-              Arrondi salaire départ avant septembre 2027
+              Arrondi salaire départ avant septembre 2026
               <select
                 value={store.settings.roundingStep}
                 onChange={(e) =>
@@ -1875,7 +1875,7 @@ export default function App() {
               </select>
             </label>
             <label>
-              Arrondi salaire départ depuis septembre 2027
+              Arrondi salaire départ depuis septembre 2026
               <span className="readonly-value">{formatMoney(100_000)}</span>
             </label>
             <div className="theme-field">
