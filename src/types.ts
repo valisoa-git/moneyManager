@@ -44,6 +44,7 @@ export type FixedChargeItem = {
   id: string;
   label: string;
   amount: number;
+  subItems?: FixedChargeItem[];
 };
 
 export type DayFraction = 0.5 | 1;
@@ -99,32 +100,140 @@ export type Store = {
 };
 
 export const TJM = 315_000;
+export const EXPENSE_TOTALS_START_MONTH = "2026-09";
+export const LONG_TERM_EXPENSES_START_MONTH = "2027-01";
+export const PRE_SEPTEMBER_FIXED_CHARGES = 1_200_000;
+export const PRE_SEPTEMBER_VARIABLE_CHARGE_BUDGET = 1_200_000;
 export const DEFAULT_FIXED_CHARGE_ITEMS: FixedChargeItem[] = [
-  { id: "provision", label: "Provision", amount: 300_000 },
-  { id: "essence", label: "Essence", amount: 300_000 },
-  { id: "panampy", label: "Panampy", amount: 100_000 },
-  { id: "mama-auri", label: "Mama auri", amount: 400_000 },
-  { id: "mama-valisoa", label: "Mama valisoa", amount: 400_000 },
-  { id: "starlink", label: "Starlink", amount: 140_000 },
-  { id: "connexion-67", label: "Connexion 67", amount: 110_000 },
-  { id: "jirama", label: "Jirama", amount: 150_000 },
-  { id: "sakafo", label: "Sakafo", amount: 600_000 },
-  { id: "hery", label: "Hery", amount: 250_000 },
-  { id: "noella", label: "Noella (connexion + hofatrano)", amount: 250_000 },
+  {
+    id: "logement",
+    label: "Logement",
+    amount: 280_000,
+    subItems: [
+      { id: "jirama", label: "Jirama", amount: 200_000 },
+      { id: "mpanampy", label: "Mpanampy", amount: 80_000 },
+    ],
+  },
+  {
+    id: "sakafo",
+    label: "Sakafo",
+    amount: 690_000,
+    subItems: [
+      { id: "laoka", label: "Laoka", amount: 500_000 },
+      { id: "fruit", label: "Fruit", amount: 60_000 },
+      { id: "atody", label: "Atody", amount: 30_000 },
+      { id: "mofo", label: "Mofo", amount: 25_000 },
+      { id: "rano", label: "Rano", amount: 75_000 },
+    ],
+  },
+  {
+    id: "transport",
+    label: "Transport",
+    amount: 300_000,
+    subItems: [{ id: "carburant", label: "Carburant", amount: 300_000 }],
+  },
+  {
+    id: "sante",
+    label: "Santé",
+    amount: 50_000,
+    subItems: [
+      { id: "vaccin", label: "Vaccin", amount: 10_000 },
+      { id: "pediatre", label: "Pédiatre", amount: 40_000 },
+    ],
+  },
+  {
+    id: "internet",
+    label: "Internet",
+    amount: 310_000,
+    subItems: [
+      { id: "starlink", label: "Starlink", amount: 140_000 },
+      { id: "connexion-67", label: "Connexion 67", amount: 110_000 },
+      { id: "backup", label: "Backup", amount: 60_000 },
+    ],
+  },
+  {
+    id: "provision",
+    label: "Provision",
+    amount: 450_000,
+    subItems: [
+      { id: "grossiste", label: "Grossiste", amount: 220_000 },
+      { id: "kibo", label: "Kibo", amount: 230_000 },
+    ],
+  },
+  {
+    id: "depense-commune",
+    label: "Dépense commune",
+    amount: 1_300_000,
+    subItems: [
+      { id: "mama", label: "Mama", amount: 400_000 },
+      { id: "maman-auri", label: "Maman Auri", amount: 400_000 },
+      { id: "hery", label: "Hery", amount: 250_000 },
+      { id: "nou", label: "Nou", amount: 250_000 },
+    ],
+  },
 ];
 export const DEFAULT_FIXED_CHARGES = DEFAULT_FIXED_CHARGE_ITEMS.reduce((sum, item) => sum + item.amount, 0);
 export const DEFAULT_VARIABLE_CHARGE_ITEMS: FixedChargeItem[] = [
-  { id: "couche", label: "Couche", amount: 400_000 },
-  { id: "panampy-2", label: "Panampy 2", amount: 80_000 },
-  { id: "bonbone-eau", label: "Bonbone à eau", amount: 104_000 },
-  { id: "gouter", label: "Goûter", amount: 100_000 },
-  { id: "imprevu", label: "Imprévu", amount: 100_000 },
-  { id: "mvola", label: "Mvola", amount: 15_000 },
-  { id: "clinique-noa", label: "Clinique Noa", amount: 100_000 },
-  { id: "adidy", label: "Adidy", amount: 100_000 },
+  {
+    id: "enfants",
+    label: "Enfants",
+    amount: 260_000,
+    subItems: [
+      { id: "couche", label: "Couche", amount: 140_000 },
+      { id: "lingette", label: "Lingette", amount: 15_000 },
+      { id: "lait", label: "Lait", amount: 105_000 },
+    ],
+  },
+  {
+    id: "shopping",
+    label: "Shopping",
+    amount: 120_000,
+    subItems: [
+      { id: "ariel-bebe", label: "Ariel bébé", amount: 100_000 },
+      { id: "aina", label: "Aina", amount: 20_000 },
+    ],
+  },
+  {
+    id: "autre",
+    label: "Autre",
+    amount: 260_000,
+    subItems: [
+      { id: "imprevu", label: "Imprévu", amount: 120_000 },
+      { id: "gaz-riz", label: "Gaz ou riz", amount: 120_000 },
+      { id: "mvola", label: "Mvola", amount: 20_000 },
+    ],
+  },
+  {
+    id: "loisirs",
+    label: "Loisirs",
+    amount: 150_000,
+    subItems: [
+      { id: "gouter", label: "Goûter", amount: 50_000 },
+      { id: "resto", label: "Resto", amount: 100_000 },
+    ],
+  },
+  {
+    id: "adidy",
+    label: "Adidy",
+    amount: 130_000,
+    subItems: [
+      { id: "fiangonana", label: "Fiangonana", amount: 50_000 },
+      { id: "rakitraitra", label: "Rakitraitra", amount: 20_000 },
+      { id: "fokotany", label: "Fokotany", amount: 10_000 },
+      { id: "parent", label: "Parent", amount: 50_000 },
+    ],
+  },
 ];
-export const DEFAULT_VARIABLE_CHARGE_BUDGET = 1_000_000;
-export const DEFAULT_PROJECT_BUDGET = 1_000_000;
+export const DEFAULT_VARIABLE_CHARGE_BUDGET = DEFAULT_VARIABLE_CHARGE_ITEMS.reduce((sum, item) => sum + item.amount, 0);
+export const DEFAULT_LONG_TERM_EXPENSE_ITEMS: FixedChargeItem[] = [
+  { id: "retraite", label: "Retraite", amount: 500_000 },
+  { id: "universite-bebe", label: "Épargne université bébé", amount: 500_000 },
+  { id: "vacances-etranger", label: "Vacances étranger", amount: 700_000 },
+  { id: "vacances-locales", label: "Vacances locales", amount: 200_000 },
+  { id: "assurance-sante", label: "Assurance santé", amount: 100_000 },
+];
+export const DEFAULT_LONG_TERM_EXPENSE_TOTAL = DEFAULT_LONG_TERM_EXPENSE_ITEMS.reduce((sum, item) => sum + item.amount, 0);
+export const DEFAULT_PROJECT_BUDGET = 200_000;
 
 export const DEFAULT_SETTINGS: Settings = {
   tjm: TJM,

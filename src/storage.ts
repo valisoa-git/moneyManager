@@ -6,6 +6,8 @@ import {
   DEFAULT_VARIABLE_CHARGE_BUDGET,
   DEFAULT_VARIABLE_CHARGE_ITEMS,
   EMPTY_MONTH,
+  EXPENSE_TOTALS_START_MONTH,
+  PRE_SEPTEMBER_VARIABLE_CHARGE_BUDGET,
   THEMES,
   TJM,
   type BucketProject,
@@ -27,6 +29,14 @@ const LEGACY_V3 = "gestion-depenses:v3";
 const LEGACY_V2 = "gestion-depenses:v2";
 const LEGACY_V1 = "gestion-depenses:v1";
 export const PROJECT_SEED_VERSION = 1;
+const LEGACY_DEFAULT_VARIABLE_CHARGE_BUDGETS = new Set([1_000_000, 1_200_000]);
+const LEGACY_DEFAULT_PROJECT_BUDGETS = new Set([1_000_000]);
+const DEFAULT_2027_HOLIDAY_LEAVES: Record<string, { date: string; note: string }> = {
+  "2027-01": { date: "2027-01-01", note: "Férié - Nouvel an" },
+  "2027-03": { date: "2027-03-08", note: "Férié - Journée des femmes" },
+  "2027-05": { date: "2027-05-06", note: "Férié - Ascension" },
+  "2027-11": { date: "2027-11-01", note: "Férié - Toussaint" },
+};
 
 const STARTER_PROJECTS: BucketProject[] = [
   {
@@ -126,16 +136,8 @@ function migrateTheme(value: unknown): ThemeId {
   return THEMES.some((theme) => theme.id === value) ? (value as ThemeId) : DEFAULT_SETTINGS.theme;
 }
 
-function migrateFixedChargeItems(raw: unknown): FixedChargeItem[] {
-  if (!Array.isArray(raw)) return DEFAULT_FIXED_CHARGE_ITEMS;
-  return raw
-    .map((item) => item as Partial<FixedChargeItem>)
-    .filter((item) => item.id && item.label && typeof item.amount === "number" && item.amount >= 0)
-    .map((item) => ({
-      id: String(item.id),
-      label: String(item.label),
-      amount: item.amount ?? 0,
-    }));
+function migrateFixedChargeItems(_raw: unknown): FixedChargeItem[] {
+  return DEFAULT_FIXED_CHARGE_ITEMS;
 }
 
 function migrateChargeItems(raw: unknown, defaults: FixedChargeItem[]): FixedChargeItem[] {
@@ -147,7 +149,91 @@ function migrateChargeItems(raw: unknown, defaults: FixedChargeItem[]): FixedCha
       id: String(item.id),
       label: String(item.label),
       amount: item.amount ?? 0,
+      subItems: migrateChargeItems(item.subItems, []),
     }));
+}
+
+function usesFixedExpenseTotals(key: string) {
+  return key >= EXPENSE_TOTALS_START_MONTH;
+}
+
+function defaultVariableChargeBudgetForMonth(key: string) {
+  return usesFixedExpenseTotals(key) ? DEFAULT_VARIABLE_CHARGE_BUDGET : PRE_SEPTEMBER_VARIABLE_CHARGE_BUDGET;
+}
+
+function defaultVariableChargeItemsForMonth(key: string) {
+  return usesFixedExpenseTotals(key) ? DEFAULT_VARIABLE_CHARGE_ITEMS : [];
+}
+
+function isWeekday(date: Date) {
+  const day = date.getDay();
+  return day !== 0 && day !== 6;
+}
+
+function monthEndWeekday(key: string) {
+  const [year, month] = key.split("-").map(Number);
+  const cursor = new Date(year, month, 0);
+  while (!isWeekday(cursor)) {
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return `${key}-${String(cursor.getDate()).padStart(2, "0")}`;
+}
+
+function nextWeekday(date: Date) {
+  const cursor = new Date(date);
+  while (!isWeekday(cursor)) {
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return cursor;
+}
+
+function monthlyLeaveDate(key: string) {
+  const [year, month] = key.split("-").map(Number);
+  const date = nextWeekday(new Date(year, month - 1, 23));
+  return `${key}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function isDefault2027Leave(leave: DayEntry) {
+  return leave.id.startsWith("default-leave-") || leave.note.startsWith("Férié - ") || leave.note === "Congé mensuel du 23" || leave.note === "Congé fin du mois";
+}
+
+function shouldRefreshDefaultLeaves(key: string, leaves: DayEntry[]) {
+  return key.startsWith("2027-") && (leaves.length === 0 || leaves.every(isDefault2027Leave));
+}
+
+function defaultLeavesForMonth(key: string): DayEntry[] {
+  if (!key.startsWith("2027-")) return [];
+
+  const leaves: DayEntry[] = [];
+  const holiday = DEFAULT_2027_HOLIDAY_LEAVES[key];
+  if (holiday) {
+    leaves.push({
+      id: `default-leave-${holiday.date}`,
+      date: holiday.date,
+      fraction: 1,
+      note: holiday.note,
+    });
+  } else {
+    const endDate = monthEndWeekday(key);
+    leaves.push({
+      id: `default-leave-${endDate}`,
+      date: endDate,
+      fraction: 1,
+      note: "Congé fin du mois",
+    });
+  }
+
+  const date23 = monthlyLeaveDate(key);
+  if (!leaves.some((leave) => leave.date === date23)) {
+    leaves.push({
+      id: `default-leave-${date23}`,
+      date: date23,
+      fraction: 1,
+      note: date23.endsWith("-23") ? "Congé mensuel du 23" : "Congé mensuel du 23 reporté",
+    });
+  }
+
+  return leaves;
 }
 
 function asFraction(value: unknown): DayFraction {
@@ -187,9 +273,18 @@ function migrateExtras(raw: unknown): DayEntry[] {
   }).filter((item) => item.date);
 }
 
-function migrateMonth(raw: unknown, defaultVariableChargeBudget: number, defaultProjectBudget: number): MonthWork {
+function migrateMonth(key: string, raw: unknown, defaultProjectBudget: number): MonthWork {
+  const defaultVariableChargeBudget = defaultVariableChargeBudgetForMonth(key);
+  const defaultVariableCharges = defaultVariableChargeItemsForMonth(key);
+  const defaultLeaves = defaultLeavesForMonth(key);
   if (!raw || typeof raw !== "object") {
-    return { ...EMPTY_MONTH, variableChargeBudget: defaultVariableChargeBudget, projectBudget: defaultProjectBudget };
+    return {
+      ...EMPTY_MONTH,
+      leaves: defaultLeaves,
+      variableChargeBudget: defaultVariableChargeBudget,
+      variableCharges: defaultVariableCharges,
+      projectBudget: defaultProjectBudget,
+    };
   }
   const month = raw as {
     leaves?: unknown;
@@ -203,34 +298,48 @@ function migrateMonth(raw: unknown, defaultVariableChargeBudget: number, default
     variableCharges?: unknown;
     projectBudget?: unknown;
   };
+  const savedLeaves = Array.isArray(month.leaves) ? migrateLeaves(month.leaves) : [];
+  const leaves = shouldRefreshDefaultLeaves(key, savedLeaves) ? defaultLeaves : savedLeaves;
+  const variableChargeBudget =
+    typeof month.variableChargeBudget === "number" && month.variableChargeBudget >= 0
+      ? month.variableChargeBudget
+      : defaultVariableChargeBudget;
+
   return {
-    leaves: migrateLeaves(month.leaves),
+    leaves,
     extras: migrateExtras(month.extras ?? month.overtimes),
     husbandLeaves: migrateLeaves(month.husbandLeaves),
     husbandExtras: migrateExtras(month.husbandExtras ?? month.husbandOvertimes),
     husbandScheduleCustom: month.husbandScheduleCustom === true,
     variableChargeBudget:
-      typeof month.variableChargeBudget === "number" && month.variableChargeBudget >= 0
-        ? month.variableChargeBudget
-        : defaultVariableChargeBudget,
-    variableCharges: migrateChargeItems(month.variableCharges, DEFAULT_VARIABLE_CHARGE_ITEMS),
+      usesFixedExpenseTotals(key) || LEGACY_DEFAULT_VARIABLE_CHARGE_BUDGETS.has(variableChargeBudget)
+        ? defaultVariableChargeBudget
+        : variableChargeBudget,
+    variableCharges: usesFixedExpenseTotals(key)
+      ? DEFAULT_VARIABLE_CHARGE_ITEMS
+      : migrateChargeItems(month.variableCharges, defaultVariableCharges),
     projectBudget:
-      typeof month.projectBudget === "number" && month.projectBudget >= 0 ? month.projectBudget : defaultProjectBudget,
+      typeof month.projectBudget === "number" && month.projectBudget >= 0
+        ? LEGACY_DEFAULT_PROJECT_BUDGETS.has(month.projectBudget)
+          ? defaultProjectBudget
+          : month.projectBudget
+        : defaultProjectBudget,
   };
 }
 
 function addLegacyExpensesToMonths(
   months: Store["months"],
   expenses: Expense[],
-  defaultVariableChargeBudget: number,
   defaultProjectBudget: number,
 ) {
   for (const expense of expenses) {
     const key = expense.date.slice(0, 7);
     if (!key) continue;
+    if (usesFixedExpenseTotals(key)) continue;
     const month = months[key] ?? {
       ...EMPTY_MONTH,
-      variableChargeBudget: defaultVariableChargeBudget,
+      variableChargeBudget: defaultVariableChargeBudgetForMonth(key),
+      variableCharges: defaultVariableChargeItemsForMonth(key),
       projectBudget: defaultProjectBudget,
     };
     const alreadyExists = month.variableCharges.some((item) => item.id === expense.id);
@@ -272,18 +381,14 @@ function migrateSettings(parsed: RawStore, options: { legacyV2?: boolean } = {})
       parsed.settings?.husbandTjm && parsed.settings.husbandTjm > 0
         ? parsed.settings.husbandTjm
         : DEFAULT_SETTINGS.husbandTjm,
-    fixedCharges:
-      typeof parsed.settings?.fixedCharges === "number" && parsed.settings.fixedCharges >= 0
-        ? parsed.settings.fixedCharges
-        : DEFAULT_SETTINGS.fixedCharges,
+    fixedCharges: DEFAULT_FIXED_CHARGES,
     fixedChargeItems: migrateFixedChargeItems(parsed.settings?.fixedChargeItems),
-    defaultVariableChargeBudget:
-      typeof parsed.settings?.defaultVariableChargeBudget === "number" && parsed.settings.defaultVariableChargeBudget >= 0
-        ? parsed.settings.defaultVariableChargeBudget
-        : DEFAULT_VARIABLE_CHARGE_BUDGET,
+    defaultVariableChargeBudget: DEFAULT_VARIABLE_CHARGE_BUDGET,
     defaultProjectBudget:
       typeof parsed.settings?.defaultProjectBudget === "number" && parsed.settings.defaultProjectBudget >= 0
-        ? parsed.settings.defaultProjectBudget
+        ? LEGACY_DEFAULT_PROJECT_BUDGETS.has(parsed.settings.defaultProjectBudget)
+          ? DEFAULT_PROJECT_BUDGET
+          : parsed.settings.defaultProjectBudget
         : DEFAULT_PROJECT_BUDGET,
     roundingStep: parsed.settings?.roundingStep === 1_000_000 ? 1_000_000 : 500_000,
     theme: migrateTheme(parsed.settings?.theme),
@@ -294,12 +399,11 @@ function migrateStore(parsed: RawStore, options: { legacyV2?: boolean } = {}): S
   const settings = migrateSettings(parsed, options);
   const months: Store["months"] = {};
   for (const [key, value] of Object.entries(parsed.months ?? {})) {
-    months[key] = migrateMonth(value, settings.defaultVariableChargeBudget, settings.defaultProjectBudget);
+    months[key] = migrateMonth(key, value, settings.defaultProjectBudget);
   }
   addLegacyExpensesToMonths(
     months,
     parsed.expenses ?? [],
-    settings.defaultVariableChargeBudget,
     settings.defaultProjectBudget,
   );
 
@@ -346,7 +450,7 @@ export function loadStore(): Store {
       const parsed = JSON.parse(legacyV1) as unknown;
       if (isExpenseArray(parsed)) {
         const months: Store["months"] = {};
-        addLegacyExpensesToMonths(months, parsed, DEFAULT_VARIABLE_CHARGE_BUDGET, DEFAULT_PROJECT_BUDGET);
+        addLegacyExpensesToMonths(months, parsed, DEFAULT_PROJECT_BUDGET);
         return withStarterProjects({ ...empty, months });
       }
     }
@@ -361,12 +465,27 @@ export function saveStore(store: Store) {
 }
 
 export function monthWork(store: Store, key: string) {
-  return (
+  const defaultVariableChargeBudget = defaultVariableChargeBudgetForMonth(key);
+  const defaultVariableCharges = defaultVariableChargeItemsForMonth(key);
+  const defaultLeaves = defaultLeavesForMonth(key);
+  const work =
     store.months[key] ?? {
       ...EMPTY_MONTH,
-      variableChargeBudget: store.settings.defaultVariableChargeBudget,
-      variableCharges: DEFAULT_VARIABLE_CHARGE_ITEMS,
+      leaves: defaultLeaves,
       projectBudget: store.settings.defaultProjectBudget,
-    }
-  );
+    };
+
+  if (usesFixedExpenseTotals(key)) {
+    return {
+      ...work,
+      variableChargeBudget: defaultVariableChargeBudget,
+      variableCharges: defaultVariableCharges,
+    };
+  }
+
+  return {
+    ...work,
+    variableChargeBudget: work.variableChargeBudget ?? defaultVariableChargeBudget,
+    variableCharges: work.variableCharges ?? defaultVariableCharges,
+  };
 }

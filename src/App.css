@@ -371,6 +371,30 @@ h1 {
   font-weight: 700;
 }
 
+.forecast-subtabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 4px;
+  background: var(--bg-soft);
+}
+
+.expense-subtabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.expense-subtabs button {
+  min-width: 0;
+  padding-inline: 6px;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.forecast-subtabs button {
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
 .card {
   display: grid;
   gap: 12px;
@@ -703,9 +727,21 @@ h1 {
 
 .forecast table {
   width: 100%;
-  min-width: 1510px;
+  min-width: 1740px;
   border-collapse: collapse;
   font-size: 13px;
+}
+
+.forecast.view-me table,
+.forecast.view-husband table {
+  min-width: 1290px;
+}
+
+.forecast.view-me .col-partner,
+.forecast.view-me .legend-partner,
+.forecast.view-husband .col-mine,
+.forecast.view-husband .legend-mine {
+  display: none;
 }
 
 .forecast th,
@@ -1277,6 +1313,16 @@ h1 {
   .tabs button {
     padding-inline: 2px;
     font-size: 10px;
+  }
+
+  .expense-subtabs {
+    gap: 4px;
+    padding: 4px;
+  }
+
+  .expense-subtabs button {
+    padding-inline: 4px;
+    font-size: 11px;
   }
 
   .theme-grid {

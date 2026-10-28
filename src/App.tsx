@@ -24,6 +24,11 @@ import { monthSnapshot, personSnapshot, roundDownToStep } from "./finance";
 import { loadStore, monthWork, PROJECT_SEED_VERSION, saveStore, withStarterProjects } from "./storage";
 import { isSupabaseConfigured, supabase } from "./supabaseClient";
 import {
+  DEFAULT_LONG_TERM_EXPENSE_ITEMS,
+  DEFAULT_LONG_TERM_EXPENSE_TOTAL,
+  DEFAULT_VARIABLE_CHARGE_BUDGET,
+  DEFAULT_VARIABLE_CHARGE_ITEMS,
+  EXPENSE_TOTALS_START_MONTH,
   formatAmountInput,
   formatDays,
   formatMoney,
@@ -32,6 +37,8 @@ import {
   parseAmount,
   parseFraction,
   parseMonthKey,
+  LONG_TERM_EXPENSES_START_MONTH,
+  PRE_SEPTEMBER_FIXED_CHARGES,
   shiftMonth,
   THEMES,
   todayISO,
@@ -46,9 +53,10 @@ import {
 import "./App.css";
 
 type Tab = "synthese" | "travail" | "depenses" | "prevision" | "projets" | "settings";
-type Sheet = "expense" | "fixedCharge" | "leave" | "extra" | "personal" | "projectBudget" | "bucketProject" | null;
+type Sheet = "expense" | "leave" | "extra" | "personal" | "projectBudget" | "bucketProject" | null;
 type Worker = "me" | "husband";
-type ExpenseView = "charges" | "personal";
+type ExpenseView = "charges" | "longTerm" | "personal";
+type ForecastView = "both" | "me" | "husband";
 
 const emptyExpense = {
   amount: "",
@@ -59,11 +67,6 @@ const emptyPersonalExpense = {
   label: "",
   amount: "",
   date: todayISO(),
-};
-
-const emptyFixedCharge = {
-  label: "",
-  amount: "",
 };
 
 const emptyProjectBudget = {
@@ -79,6 +82,8 @@ const emptyBucketProject = {
 const emptyLeave = { fraction: "1" as "1" | "0.5" };
 const emptyExtra = { fraction: "1" as "1" | "0.5", note: "" };
 const APP_START_MONTH = "2026-07";
+const FIXED_PERSONAL_START_MONTH = "2026-09";
+const FIXED_PERSONAL_AMOUNT = 300_000;
 const WEEK_DAYS = ["L", "M", "M", "J", "V", "S", "D"];
 
 function DurationField({
@@ -197,12 +202,49 @@ function defaultDateForMonth(key: string) {
   return today.startsWith(key) ? today : `${key}-01`;
 }
 
-function fixedChargeTotal(settings: Settings) {
-  return settings.fixedChargeItems.reduce((sum, item) => sum + item.amount, 0);
+function hasFixedExpenseTotals(key: string) {
+  return key >= EXPENSE_TOTALS_START_MONTH;
+}
+
+function fixedChargeTotal(settings: Settings, key: string) {
+  return hasFixedExpenseTotals(key)
+    ? settings.fixedChargeItems.reduce((sum, item) => sum + item.amount, 0)
+    : PRE_SEPTEMBER_FIXED_CHARGES;
+}
+
+function fixedChargeItemsForMonth(settings: Settings, key: string) {
+  return hasFixedExpenseTotals(key)
+    ? settings.fixedChargeItems
+    : [{ id: "charge-fixe-avant-septembre", label: "Charge fixe", amount: PRE_SEPTEMBER_FIXED_CHARGES }];
+}
+
+function variableChargeBudgetForMonth(work: ReturnType<typeof monthWork>, key: string) {
+  return hasFixedExpenseTotals(key) ? DEFAULT_VARIABLE_CHARGE_BUDGET : work.variableChargeBudget;
+}
+
+function variableChargeItemsForMonth(work: ReturnType<typeof monthWork>, key: string) {
+  return hasFixedExpenseTotals(key) ? DEFAULT_VARIABLE_CHARGE_ITEMS : work.variableCharges;
+}
+
+function longTermExpenseItemsForMonth(key: string) {
+  return key >= LONG_TERM_EXPENSES_START_MONTH ? DEFAULT_LONG_TERM_EXPENSE_ITEMS : [];
+}
+
+function longTermExpenseTotalForMonth(key: string) {
+  return key >= LONG_TERM_EXPENSES_START_MONTH ? DEFAULT_LONG_TERM_EXPENSE_TOTAL : 0;
+}
+
+function chargeSubItemLine(item: FixedChargeItem) {
+  if (!item.subItems?.length) return null;
+  return item.subItems.map((subItem) => `${subItem.label} ${formatAmountInput(subItem.amount)}`).join(" · ");
 }
 
 function availableProjectBudget(projectBudget: number, savingsBeforeProject: number) {
   return Math.max(0, Math.min(projectBudget, savingsBeforeProject));
+}
+
+function personalPartForMonth(key: string, earned: number, startingSalary: number) {
+  return key >= FIXED_PERSONAL_START_MONTH ? FIXED_PERSONAL_AMOUNT : earned - startingSalary;
 }
 
 function projectSummary(projects: BucketProject[]) {
@@ -381,11 +423,10 @@ export default function App() {
   const [selectedExtraDates, setSelectedExtraDates] = useState<Record<string, DayFraction>>({});
   const [dayPerson, setDayPerson] = useState<Worker>("me");
   const [workPerson, setWorkPerson] = useState<Worker>("me");
+  const [forecastView, setForecastView] = useState<ForecastView>("both");
   const [expenseView, setExpenseView] = useState<ExpenseView>("charges");
   const [personalForm, setPersonalForm] = useState(emptyPersonalExpense);
   const [editingPersonalExpense, setEditingPersonalExpense] = useState<string | null>(null);
-  const [fixedChargeForm, setFixedChargeForm] = useState(emptyFixedCharge);
-  const [editingFixedCharge, setEditingFixedCharge] = useState<string | null>(null);
   const [projectBudgetForm, setProjectBudgetForm] = useState(emptyProjectBudget);
   const [editingProjectMonth, setEditingProjectMonth] = useState(month);
   const [bucketProjectForm, setBucketProjectForm] = useState(emptyBucketProject);
@@ -515,19 +556,23 @@ export default function App() {
   const activeWorkExtras = workPerson === "husband" ? husbandMonthExtras : work.extras;
   const activeWorkTjm = workPerson === "husband" ? store.settings.husbandTjm : store.settings.tjm;
 
-  const monthlyVariableCharges = work.variableCharges;
+  const expenseTotalsAreFixed = hasFixedExpenseTotals(month);
+  const fixedChargeItems = fixedChargeItemsForMonth(store.settings, month);
+  const monthlyVariableCharges = variableChargeItemsForMonth(work, month);
   const expensesTotal = monthlyVariableCharges.reduce((sum, item) => sum + item.amount, 0);
+  const monthlyLongTermExpenses = longTermExpenseItemsForMonth(month);
+  const longTermExpenseTotal = longTermExpenseTotalForMonth(month);
   const currentStartingSalary = roundDownToStep(snap.earned, store.settings.roundingStep);
   const currentStartingSalaryToDate = roundDownToStep(snap.earnedToDate, store.settings.roundingStep);
   const husbandStartingSalary = roundDownToStep(husbandSnap.earned, store.settings.roundingStep);
   const husbandStartingSalaryToDate = roundDownToStep(husbandSnap.earnedToDate, store.settings.roundingStep);
   const householdStartingSalary = currentStartingSalary + husbandStartingSalary;
   const householdStartingSalaryToDate = currentStartingSalaryToDate + husbandStartingSalaryToDate;
-  const chargeFixed = fixedChargeTotal(store.settings);
-  const chargeVariableBudget = work.variableChargeBudget;
-  const chargeStart = chargeFixed + chargeVariableBudget;
+  const chargeFixed = fixedChargeTotal(store.settings, month);
+  const chargeVariableBudget = variableChargeBudgetForMonth(work, month);
+  const chargeStart = chargeFixed + chargeVariableBudget + longTermExpenseTotal;
   const chargeRemaining = chargeVariableBudget - expensesTotal;
-  const charges = chargeFixed + expensesTotal;
+  const charges = chargeFixed + expensesTotal + longTermExpenseTotal;
   const currentPlannedProjectTotal = store.projects
     .filter((project) => project.plannedMonth === month)
     .reduce((sum, project) => sum + project.amount, 0);
@@ -537,7 +582,7 @@ export default function App() {
   const projectAvailable = availableProjectBudget(monthlyProjectBudget, savingsBeforeProject);
   const reste = savingsBeforeProject - monthlyProjectBudget;
   const resteToDate = savingsBeforeProjectToDate - monthlyProjectBudget;
-  const personalStart = snap.earned - currentStartingSalary;
+  const personalStart = personalPartForMonth(month, snap.earned, currentStartingSalary);
   const monthlyPersonalExpenses = store.personalExpenses.filter((expense) => expense.date.startsWith(month));
   const personalSpent = monthlyPersonalExpenses.reduce((sum, expense) => sum + expense.amount, 0);
   const personalRemaining = personalStart - personalSpent;
@@ -574,11 +619,13 @@ export default function App() {
         );
         const startingSalary = roundDownToStep(monthSnap.earned, store.settings.roundingStep);
         const husbandStartingSalary = roundDownToStep(monthHusbandSnap.earned, store.settings.roundingStep);
-        const personalPart = monthSnap.earned - startingSalary;
-        const husbandPersonalPart = monthHusbandSnap.earned - husbandStartingSalary;
+        const personalPart = personalPartForMonth(key, monthSnap.earned, startingSalary);
+        const husbandPersonalPart = personalPartForMonth(key, monthHusbandSnap.earned, husbandStartingSalary);
         const householdStartingSalary = startingSalary + husbandStartingSalary;
-        const fixedCharges = fixedChargeTotal(store.settings);
-        const chargeTotal = fixedCharges + monthWorkData.variableChargeBudget;
+        const fixedCharges = fixedChargeTotal(store.settings, key);
+        const variableChargeBudget = variableChargeBudgetForMonth(monthWorkData, key);
+        const longTermExpenseTotal = longTermExpenseTotalForMonth(key);
+        const chargeTotal = fixedCharges + variableChargeBudget + longTermExpenseTotal;
         const savingsBeforeProject = householdStartingSalary - chargeTotal;
         const projectBudget = plannedProjectTotal > 0 ? plannedProjectTotal : monthWorkData.projectBudget;
         const projectAvailable = availableProjectBudget(projectBudget, savingsBeforeProject);
@@ -601,6 +648,9 @@ export default function App() {
           householdStartingSalary,
           personalPart,
           husbandPersonalPart,
+          fixedCharges,
+          variableChargeBudget,
+          longTermExpenseTotal,
           chargeTotal,
           projectBudget,
           projectAvailable,
@@ -699,6 +749,7 @@ export default function App() {
   }
 
   function openExpense(expense?: FixedChargeItem) {
+    if (expenseTotalsAreFixed) return;
     if (expense) {
       setEditingExpense(expense.id);
       setExpenseForm({
@@ -742,58 +793,8 @@ export default function App() {
     setSheet(null);
   }
 
-  function openFixedCharge(item?: FixedChargeItem) {
-    if (item) {
-      setEditingFixedCharge(item.id);
-      setFixedChargeForm({ label: item.label, amount: formatAmountInput(item.amount) });
-    } else {
-      setEditingFixedCharge(null);
-      setFixedChargeForm(emptyFixedCharge);
-    }
-    setSheet("fixedCharge");
-  }
-
-  function saveFixedCharge(e: React.FormEvent) {
-    e.preventDefault();
-    const amount = parseAmount(fixedChargeForm.amount);
-    if (!fixedChargeForm.label.trim() || !Number.isFinite(amount) || amount < 0) return;
-    const payload: FixedChargeItem = {
-      id: editingFixedCharge ?? crypto.randomUUID(),
-      label: fixedChargeForm.label.trim(),
-      amount,
-    };
-    setStore((prev) => {
-      const fixedChargeItems = editingFixedCharge
-        ? prev.settings.fixedChargeItems.map((item) => (item.id === editingFixedCharge ? payload : item))
-        : [...prev.settings.fixedChargeItems, payload];
-      return {
-        ...prev,
-        settings: {
-          ...prev.settings,
-          fixedChargeItems,
-          fixedCharges: fixedChargeItems.reduce((sum, item) => sum + item.amount, 0),
-        },
-      };
-    });
-    setSheet(null);
-  }
-
-  function removeFixedCharge(id: string) {
-    setStore((prev) => {
-      const fixedChargeItems = prev.settings.fixedChargeItems.filter((item) => item.id !== id);
-      return {
-        ...prev,
-        settings: {
-          ...prev.settings,
-          fixedChargeItems,
-          fixedCharges: fixedChargeItems.reduce((sum, item) => sum + item.amount, 0),
-        },
-      };
-    });
-    setSheet(null);
-  }
-
   function updateVariableChargeBudget(value: string) {
+    if (expenseTotalsAreFixed) return;
     const variableChargeBudget = parseAmount(value);
     if (!Number.isFinite(variableChargeBudget) || variableChargeBudget < 0) return;
     patchWork({ variableChargeBudget });
@@ -1106,9 +1107,11 @@ export default function App() {
 
   const fab =
     tab === "depenses"
-      ? expenseView === "charges"
+      ? expenseView === "charges" && !expenseTotalsAreFixed
         ? { label: "Charge variable", action: () => openExpense() }
-        : { label: "Dépense perso", action: () => openPersonalExpense() }
+        : expenseView === "personal"
+          ? { label: "Dépense perso", action: () => openPersonalExpense() }
+          : null
       : tab === "travail"
         ? { label: "Congé / jour sup", action: () => openDaySheet("leave", month, workPerson) }
         : tab === "projets"
@@ -1242,13 +1245,18 @@ export default function App() {
             <article>
               <p className="muted">Ma somme perso</p>
               <strong>{formatMoney(personalStart)}</strong>
-              <small>Mon salaire calculé - mon salaire arrondi</small>
+              <small>
+                {month >= FIXED_PERSONAL_START_MONTH
+                  ? "Montant fixe depuis septembre 2026"
+                  : "Mon salaire calculé - mon salaire arrondi"}
+              </small>
             </article>
             <article>
               <p className="muted">Charges</p>
               <strong>{formatMoney(charges)}</strong>
               <small>
                 {formatMoney(chargeFixed)} fixe · {formatMoney(expensesTotal)} variable
+                {longTermExpenseTotal > 0 ? ` · ${formatMoney(longTermExpenseTotal)} épargne` : ""}
               </small>
             </article>
             <article>
@@ -1371,13 +1379,20 @@ export default function App() {
 
       {tab === "depenses" && (
         <section className="stack">
-          <div className="subtabs">
+          <div className="subtabs expense-subtabs">
             <button
               type="button"
               className={expenseView === "charges" ? "on" : ""}
               onClick={() => setExpenseView("charges")}
             >
               Charges foyer
+            </button>
+            <button
+              type="button"
+              className={expenseView === "longTerm" ? "on" : ""}
+              onClick={() => setExpenseView("longTerm")}
+            >
+              Épargne
             </button>
             <button
               type="button"
@@ -1406,7 +1421,10 @@ export default function App() {
             <article>
               <p className="muted">Somme de départ charges</p>
               <strong>{formatMoney(chargeStart)}</strong>
-              <small>{formatMoney(chargeFixed)} fixe + {formatMoney(chargeVariableBudget)} variable</small>
+              <small>
+                {formatMoney(chargeFixed)} fixe + {formatMoney(chargeVariableBudget)} variable
+                {longTermExpenseTotal > 0 ? ` + ${formatMoney(longTermExpenseTotal)} épargne` : ""}
+              </small>
             </article>
             <article>
               <p className="muted">Dépenses variables</p>
@@ -1418,30 +1436,36 @@ export default function App() {
           <section className="stack">
             <div className="section-head">
               <h2 className="section-title">Charges fixes</h2>
-              <button type="button" className="ghost mini" onClick={() => openFixedCharge()}>
-                <IconText icon={<Plus size={15} aria-hidden="true" />} label="Ajouter" />
-              </button>
             </div>
-            {store.settings.fixedChargeItems.map((item) => (
-              <button key={item.id} type="button" className="row" onClick={() => openFixedCharge(item)}>
+            {fixedChargeItems.map((item) => (
+              <div key={item.id} className="row static">
                 <span className="row-main">
                   <strong>{item.label}</strong>
+                  {chargeSubItemLine(item) && <small>{chargeSubItemLine(item)}</small>}
                 </span>
                 <span className="row-amt">{formatMoney(item.amount)}</span>
-              </button>
+              </div>
             ))}
           </section>
 
           <section className="card">
             <label>
               Charge variable du mois
-              <input
-                inputMode="decimal"
-                value={formatAmountInput(chargeVariableBudget)}
-                onChange={(e) => updateVariableChargeBudget(e.target.value)}
-              />
+              {expenseTotalsAreFixed ? (
+                <span className="readonly-value">{formatMoney(chargeVariableBudget)}</span>
+              ) : (
+                <input
+                  inputMode="decimal"
+                  value={formatAmountInput(chargeVariableBudget)}
+                  onChange={(e) => updateVariableChargeBudget(e.target.value)}
+                />
+              )}
             </label>
-            <p className="hint">La charge fixe reste à {formatMoney(chargeFixed)}. La partie variable peut changer selon le mois.</p>
+            <p className="hint">
+              {expenseTotalsAreFixed
+                ? "Charges fixes et variables verrouillées depuis septembre 2026."
+                : `La charge fixe reste à ${formatMoney(chargeFixed)}. La partie variable peut changer selon le mois.`}
+            </p>
           </section>
 
           <section className="list">
@@ -1452,9 +1476,16 @@ export default function App() {
                 .slice()
                 .sort((a, b) => a.label.localeCompare(b.label))
                 .map((expense) => (
-                  <button key={expense.id} type="button" className="row" onClick={() => openExpense(expense)}>
+                  <button
+                    key={expense.id}
+                    type="button"
+                    className="row"
+                    onClick={() => openExpense(expense)}
+                    disabled={expenseTotalsAreFixed}
+                  >
                     <span className="row-main">
                       <strong>{expense.label}</strong>
+                      {chargeSubItemLine(expense) && <small>{chargeSubItemLine(expense)}</small>}
                     </span>
                     <span className="row-amt">{formatMoney(expense.amount)}</span>
                   </button>
@@ -1462,6 +1493,35 @@ export default function App() {
             )}
           </section>
         </>
+      )}
+
+      {tab === "depenses" && expenseView === "longTerm" && (
+        <section className="stack">
+          <section className="hero compact">
+            <div>
+              <p className="muted">Épargne mensuelle</p>
+              <p className="amount">{formatMoney(longTermExpenseTotal)}</p>
+            </div>
+            <p className="count">
+              {monthlyLongTermExpenses.length} ligne{monthlyLongTermExpenses.length > 1 ? "s" : ""}
+            </p>
+          </section>
+
+          <section className="list">
+            {monthlyLongTermExpenses.length === 0 ? (
+              <p className="empty">Disponible à partir de janvier 2027.</p>
+            ) : (
+              monthlyLongTermExpenses.map((expense) => (
+                <div key={expense.id} className="row static">
+                  <span className="row-main">
+                    <strong>{expense.label}</strong>
+                  </span>
+                  <span className="row-amt">{formatMoney(expense.amount)}</span>
+                </div>
+              ))
+            )}
+          </section>
+        </section>
       )}
 
       {tab === "depenses" && expenseView === "personal" && (
@@ -1480,7 +1540,11 @@ export default function App() {
             <article>
               <p className="muted">Somme perso toi</p>
               <strong>{formatMoney(personalStart)}</strong>
-              <small>{formatMoney(snap.earned)} gagné toi - {formatMoney(currentStartingSalary)} salaire arrondi</small>
+              <small>
+                {month >= FIXED_PERSONAL_START_MONTH
+                  ? "Montant fixe depuis septembre 2026"
+                  : `${formatMoney(snap.earned)} gagné toi - ${formatMoney(currentStartingSalary)} salaire arrondi`}
+              </small>
             </article>
             <article>
               <p className="muted">Dépenses perso</p>
@@ -1586,6 +1650,32 @@ export default function App() {
               <span>Projet / mois</span>
               <strong>{formatMoney(monthlyProjectBudget)}</strong>
             </div>
+            <div className="setting-static">
+              <span>Colonnes</span>
+              <div className="subtabs forecast-subtabs">
+                <button
+                  type="button"
+                  className={forecastView === "both" ? "on" : ""}
+                  onClick={() => setForecastView("both")}
+                >
+                  Nous
+                </button>
+                <button
+                  type="button"
+                  className={forecastView === "me" ? "on" : ""}
+                  onClick={() => setForecastView("me")}
+                >
+                  Moi
+                </button>
+                <button
+                  type="button"
+                  className={forecastView === "husband" ? "on" : ""}
+                  onClick={() => setForecastView("husband")}
+                >
+                  Mari
+                </button>
+              </div>
+            </div>
             <label>
               Arrondi salaire départ
               <select
@@ -1600,7 +1690,7 @@ export default function App() {
             </label>
           </section>
 
-          <section className="forecast">
+          <section className={`forecast view-${forecastView}`}>
             <div className="forecast-legend">
               <span className="legend-mine">Moi</span>
               <span className="legend-partner">Mon mari</span>
@@ -1624,7 +1714,10 @@ export default function App() {
                   <th className="col-partner"><ShortHead short="Sal.Mari" long="Salaire arrondi mari" /></th>
                   <th className="col-mine"><ShortHead short="Perso" long="Ma somme perso" /></th>
                   <th className="col-partner"><ShortHead short="Perso.M" long="Somme perso de mon mari" /></th>
-                  <th className="col-shared"><ShortHead short="Ch" long="Charge" /></th>
+                  <th className="col-shared"><ShortHead short="Fixe" long="Charges fixes" /></th>
+                  <th className="col-shared"><ShortHead short="Var" long="Charges variables" /></th>
+                  <th className="col-shared"><ShortHead short="Épargne" long="Épargne mensuelle" /></th>
+                  <th className="col-shared"><ShortHead short="Ch.Total" long="Total charges" /></th>
                   <th className="col-shared"><ShortHead short="Proj.Liste" long="Projets planifiés" /></th>
                   <th className="col-shared"><ShortHead short="Proj.Bud" long="Budget projet du mois" /></th>
                   <th className="col-shared"><ShortHead short="Eco" long="Économie après projet" /></th>
@@ -1672,6 +1765,9 @@ export default function App() {
                     <td className="col-partner">{formatMoney(row.husbandStartingSalary)}</td>
                     <td className="col-mine">{formatMoney(row.personalPart)}</td>
                     <td className="col-partner">{formatMoney(row.husbandPersonalPart)}</td>
+                    <td className="col-shared">{formatMoney(row.fixedCharges)}</td>
+                    <td className="col-shared">{formatMoney(row.variableChargeBudget)}</td>
+                    <td className="col-shared">{formatMoney(row.longTermExpenseTotal)}</td>
                     <td className="col-shared">{formatMoney(row.chargeTotal)}</td>
                     <td className="col-shared text-cell">
                       <span>{projectSummary(row.plannedProjects)}</span>
@@ -1740,11 +1836,7 @@ export default function App() {
             </label>
             <label>
               Charge variable par défaut
-              <input
-                inputMode="decimal"
-                value={formatAmountInput(store.settings.defaultVariableChargeBudget)}
-                onChange={(e) => updateMoneySetting("defaultVariableChargeBudget", e.target.value)}
-              />
+              <span className="readonly-value">{formatMoney(DEFAULT_VARIABLE_CHARGE_BUDGET)}</span>
             </label>
             <label>
               Projet du mois par défaut
@@ -1861,53 +1953,6 @@ export default function App() {
                   chargeDraftValue <= 0 ||
                   !Number.isFinite(chargeDraftAmount) ||
                   !expenseForm.label.trim()
-                }
-              >
-                <IconText icon={<Save size={15} aria-hidden="true" />} label="Enregistrer" />
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {sheet === "fixedCharge" && (
-        <div className="overlay" onClick={() => setSheet(null)}>
-          <form className="sheet" onClick={(e) => e.stopPropagation()} onSubmit={saveFixedCharge}>
-            <h2>{editingFixedCharge ? "Modifier charge fixe" : "Charge fixe"}</h2>
-            <label>
-              Libellé
-              <input
-                value={fixedChargeForm.label}
-                onChange={(e) => setFixedChargeForm({ ...fixedChargeForm, label: e.target.value })}
-                placeholder="Essence, jirama, provision…"
-                autoFocus
-                required
-              />
-            </label>
-            <label>
-              Valeur
-              <input
-                inputMode="decimal"
-                value={fixedChargeForm.amount}
-                onChange={(e) => setFixedChargeForm({ ...fixedChargeForm, amount: e.target.value })}
-                placeholder="300"
-                required
-              />
-            </label>
-            <p className="hint">Écris 300 pour 300 000 Ar.</p>
-            <div className="actions">
-              {editingFixedCharge && (
-                <button type="button" className="danger" onClick={() => removeFixedCharge(editingFixedCharge)}>
-                  <IconText icon={<Trash2 size={15} aria-hidden="true" />} label="Supprimer" />
-                </button>
-              )}
-              <button
-                type="submit"
-                className="primary"
-                disabled={
-                  !fixedChargeForm.label.trim() ||
-                  !Number.isFinite(parseAmount(fixedChargeForm.amount)) ||
-                  parseAmount(fixedChargeForm.amount) < 0
                 }
               >
                 <IconText icon={<Save size={15} aria-hidden="true" />} label="Enregistrer" />
