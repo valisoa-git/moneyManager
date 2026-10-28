@@ -39,6 +39,7 @@ import {
   parseMonthKey,
   LONG_TERM_EXPENSES_START_MONTH,
   PRE_SEPTEMBER_FIXED_CHARGES,
+  ROUND_TO_HUNDRED_START_MONTH,
   shiftMonth,
   THEMES,
   todayISO,
@@ -245,6 +246,14 @@ function availableProjectBudget(projectBudget: number, savingsBeforeProject: num
 
 function personalPartForMonth(key: string, earned: number, startingSalary: number) {
   return key >= FIXED_PERSONAL_START_MONTH ? FIXED_PERSONAL_AMOUNT : earned - startingSalary;
+}
+
+function startingSalaryForMonth(key: string, earned: number, settings: Settings) {
+  return roundDownToStep(earned, key >= ROUND_TO_HUNDRED_START_MONTH ? 100_000 : settings.roundingStep);
+}
+
+function roundingStepLabelForMonth(key: string, settings: Settings) {
+  return formatMoney(key >= ROUND_TO_HUNDRED_START_MONTH ? 100_000 : settings.roundingStep);
 }
 
 function projectSummary(projects: BucketProject[]) {
@@ -562,10 +571,10 @@ export default function App() {
   const expensesTotal = monthlyVariableCharges.reduce((sum, item) => sum + item.amount, 0);
   const monthlyLongTermExpenses = longTermExpenseItemsForMonth(month);
   const longTermExpenseTotal = longTermExpenseTotalForMonth(month);
-  const currentStartingSalary = roundDownToStep(snap.earned, store.settings.roundingStep);
-  const currentStartingSalaryToDate = roundDownToStep(snap.earnedToDate, store.settings.roundingStep);
-  const husbandStartingSalary = roundDownToStep(husbandSnap.earned, store.settings.roundingStep);
-  const husbandStartingSalaryToDate = roundDownToStep(husbandSnap.earnedToDate, store.settings.roundingStep);
+  const currentStartingSalary = startingSalaryForMonth(month, snap.earned, store.settings);
+  const currentStartingSalaryToDate = startingSalaryForMonth(month, snap.earnedToDate, store.settings);
+  const husbandStartingSalary = startingSalaryForMonth(month, husbandSnap.earned, store.settings);
+  const husbandStartingSalaryToDate = startingSalaryForMonth(month, husbandSnap.earnedToDate, store.settings);
   const householdStartingSalary = currentStartingSalary + husbandStartingSalary;
   const householdStartingSalaryToDate = currentStartingSalaryToDate + husbandStartingSalaryToDate;
   const chargeFixed = fixedChargeTotal(store.settings, month);
@@ -617,8 +626,8 @@ export default function App() {
           husbandLeaves(monthWorkData),
           husbandExtras(monthWorkData),
         );
-        const startingSalary = roundDownToStep(monthSnap.earned, store.settings.roundingStep);
-        const husbandStartingSalary = roundDownToStep(monthHusbandSnap.earned, store.settings.roundingStep);
+        const startingSalary = startingSalaryForMonth(key, monthSnap.earned, store.settings);
+        const husbandStartingSalary = startingSalaryForMonth(key, monthHusbandSnap.earned, store.settings);
         const personalPart = personalPartForMonth(key, monthSnap.earned, startingSalary);
         const husbandPersonalPart = personalPartForMonth(key, monthHusbandSnap.earned, husbandStartingSalary);
         const householdStartingSalary = startingSalary + husbandStartingSalary;
@@ -1235,7 +1244,7 @@ export default function App() {
             <article>
               <p className="muted">Mon salaire arrondi</p>
               <strong>{formatMoney(currentStartingSalary)}</strong>
-              <small>Arrondi par {formatMoney(store.settings.roundingStep)}</small>
+              <small>Arrondi par {roundingStepLabelForMonth(month, store.settings)}</small>
             </article>
             <article>
               <p className="muted">Salaire arrondi nous 2</p>
@@ -1676,18 +1685,25 @@ export default function App() {
                 </button>
               </div>
             </div>
-            <label>
-              Arrondi salaire départ
-              <select
-                value={store.settings.roundingStep}
-                onChange={(e) =>
-                  patchSettings({ roundingStep: Number(e.target.value) === 1_000_000 ? 1_000_000 : 500_000 })
-                }
-              >
-                <option value={500_000}>500</option>
-                <option value={1_000_000}>1000</option>
-              </select>
-            </label>
+            {month < ROUND_TO_HUNDRED_START_MONTH ? (
+              <label>
+                Arrondi salaire départ
+                <select
+                  value={store.settings.roundingStep}
+                  onChange={(e) =>
+                    patchSettings({ roundingStep: Number(e.target.value) === 1_000_000 ? 1_000_000 : 500_000 })
+                  }
+                >
+                  <option value={500_000}>500</option>
+                  <option value={1_000_000}>1000</option>
+                </select>
+              </label>
+            ) : (
+              <div className="setting-static">
+                <span>Arrondi salaire départ</span>
+                <strong>100</strong>
+              </div>
+            )}
           </section>
 
           <section className={`forecast view-${forecastView}`}>
@@ -1847,7 +1863,7 @@ export default function App() {
               />
             </label>
             <label>
-              Arrondi salaire départ
+              Arrondi salaire départ avant septembre 2027
               <select
                 value={store.settings.roundingStep}
                 onChange={(e) =>
@@ -1857,6 +1873,10 @@ export default function App() {
                 <option value={500_000}>500</option>
                 <option value={1_000_000}>1000</option>
               </select>
+            </label>
+            <label>
+              Arrondi salaire départ depuis septembre 2027
+              <span className="readonly-value">{formatMoney(100_000)}</span>
             </label>
             <div className="theme-field">
               <span>Thème</span>

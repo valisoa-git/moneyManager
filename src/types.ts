@@ -102,6 +102,7 @@ export type Store = {
 export const TJM = 315_000;
 export const EXPENSE_TOTALS_START_MONTH = "2026-09";
 export const LONG_TERM_EXPENSES_START_MONTH = "2027-01";
+export const ROUND_TO_HUNDRED_START_MONTH = "2027-09";
 export const PRE_SEPTEMBER_FIXED_CHARGES = 1_200_000;
 export const PRE_SEPTEMBER_VARIABLE_CHARGE_BUDGET = 1_200_000;
 export const DEFAULT_FIXED_CHARGE_ITEMS: FixedChargeItem[] = [
