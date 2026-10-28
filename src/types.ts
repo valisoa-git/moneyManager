@@ -233,7 +233,7 @@ export const DEFAULT_LONG_TERM_EXPENSE_ITEMS: FixedChargeItem[] = [
   { id: "assurance-sante", label: "Assurance santé", amount: 100_000 },
 ];
 export const DEFAULT_LONG_TERM_EXPENSE_TOTAL = DEFAULT_LONG_TERM_EXPENSE_ITEMS.reduce((sum, item) => sum + item.amount, 0);
-export const DEFAULT_PROJECT_BUDGET = 200_000;
+export const DEFAULT_PROJECT_BUDGET = 500_000;
 
 export const DEFAULT_SETTINGS: Settings = {
   tjm: TJM,

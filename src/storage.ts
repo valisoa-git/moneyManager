@@ -30,7 +30,7 @@ const LEGACY_V2 = "gestion-depenses:v2";
 const LEGACY_V1 = "gestion-depenses:v1";
 export const PROJECT_SEED_VERSION = 1;
 const LEGACY_DEFAULT_VARIABLE_CHARGE_BUDGETS = new Set([1_000_000, 1_200_000]);
-const LEGACY_DEFAULT_PROJECT_BUDGETS = new Set([1_000_000]);
+const LEGACY_DEFAULT_PROJECT_BUDGETS = new Set([200_000, 1_000_000]);
 const DEFAULT_2027_HOLIDAY_LEAVES: Record<string, { date: string; note: string }> = {
   "2027-01": { date: "2027-01-01", note: "Férié - Nouvel an" },
   "2027-03": { date: "2027-03-08", note: "Férié - Journée des femmes" },

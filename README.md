@@ -16,7 +16,7 @@ Suivi freelance **local**: TJM, jours ouvrables, congés, heures sup, charges, b
 - Détail charge variable: enfants 260, shopping 120, autre 260, loisirs 150, adidy 130
 - Charge variable = 920 000 Ar à partir de septembre 2026
 - Épargne mensuelle = 2 000 000 Ar à partir de janvier 2027: retraite 500, université bébé 500, vacances étranger 700, vacances locales 200, assurance santé 100
-- Projet du mois = 200 000 Ar par défaut, modifiable mois par mois
+- Projet du mois = 500 000 Ar par défaut, modifiable mois par mois
 - Reste / économies = salaire départ − charges − projet du mois
 - À date (mois en cours) = même calcul sur les jours déjà passés
 - L'application démarre en juillet 2026
